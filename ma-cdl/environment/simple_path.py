@@ -2,9 +2,9 @@ import pdb
 import numpy as np
 
 from gymnasium.utils import EzPickle
-from env.utils.scenario import BaseScenario
-from env.utils.core import Agent, Landmark, World
-from env.utils.simple_env import SimpleEnv, make_env
+from environment.utils.scenario import BaseScenario
+from environment.utils.core import Agent, Landmark, World
+from environment.utils.simple_env import SimpleEnv, make_env
 
 
 class raw_env(SimpleEnv, EzPickle):

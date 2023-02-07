@@ -4,7 +4,7 @@ import torch
 import wandb
 import numpy as np
 
-from env import simple_path
+from environment import simple_path
 from arguments import get_arguments
 from agent.speaker import Speaker
 from agent.listener import Listener

@@ -1,1 +1,1 @@
-# ma-cdl
+# Multi-Agent Context-Depedent Language

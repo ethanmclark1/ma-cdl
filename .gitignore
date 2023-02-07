@@ -109,7 +109,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-.code-workspace
 
 # Spyder project settings
 .spyderproject
@@ -131,3 +130,7 @@ dmypy.json
 
 # Weights & Biases
 /wandb
+
+# VScode
+.code-workspace
+.vscode

@@ -1,1 +1,1 @@
-# Multi-Agent Context-Depedent Language
+# Multi-Agent Context-Dependent Language

@@ -8,7 +8,7 @@ from torch.nn.functional import softmax
 from torch.distributions import Categorical
 from torch.optim.lr_scheduler import ExponentialLR
 
-from agent.utils.network import ListenerNet
+from agents.utils.network import ListenerNet
 
 class Listener():
     def __init__(self, input_dims=64, output_dims=4):

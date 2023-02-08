@@ -6,8 +6,8 @@ import numpy as np
 
 from environment import simple_path
 from arguments import get_arguments
-from agent.speaker import Speaker
-from agent.listener import Listener
+from agents.speaker import Speaker
+from agents.listener import Listener
 
 # wandb.init(project='thesis')
 # wandb.config = {

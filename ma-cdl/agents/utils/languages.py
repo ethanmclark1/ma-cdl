@@ -54,22 +54,6 @@ class Language():
         return reference_points, kd_trees
     
     def _get_region(self, pos, origin_points):
-        references_per_col = self.num_cols - 1
-        start = col_count = 0
-        end = references_per_col
-        while end <= len(origin_points):
-            col_points = origin_points[start:end]
-            for i in range(references_per_col):
-                if (pos > col_points[0]).all():
-                    region = 1 + col_count * self.num_cols
-                    break
-                elif (pos < origin_points[-1]).all():
-                    region = 2 + col_count * self.num_cols
-                    break
-            col_count += 1
-            start = end
-            end += references_per_col
-
         if (pos > origin_points[0]).all():
             region = 1
         elif (pos > origin_points[0])[0] and (pos > origin_points[-1])[1]:

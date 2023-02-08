@@ -5,8 +5,8 @@ import numpy as np
 from math import inf
 from sequitur import quick_train
 from sequitur.models import LINEAR_AE
-from agent.utils.search import astar
-from agent.utils.languages import LanguageFactory
+from agents.utils.search import astar
+from agents.utils.languages import LanguageFactory
 
 class Speaker:
     def __init__(self, max_symbols):

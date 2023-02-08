@@ -122,22 +122,23 @@ class Language():
     # 0 indicate layer traversal, -1 indicates layer reversal, and [0-16] indicates movement
     def _translate(self, symbol_list):
         directions = []
-        prev_sequence, cur_sequence = [], []
+        prev_seq, cur_seq = [], []
         for symbol in symbol_list:
             if symbol == 'END':
-                # TODO: Layer reversal
-                # Find where two lists differ and check if the index in which they differ is less than that of the previous list
-                # If it is not, then add -1 to the end of direction list (len(prev_list) - diff) / 2 amount of times                    
-                for i, cur in enumerate(cur_sequence):
-                    if i >= len(prev_sequence) or cur != prev_sequence[i]:
+                if prev_seq: 
+                    min_len = min(len(prev_seq), len(cur_seq))
+                    temp_prev, temp_cur = prev_seq[:min_len], cur_seq[:min_len]
+                    diff_idx = [i for i, (a, b) in enumerate(zip(temp_prev, temp_cur)) if a != b]
+                    if diff_idx and diff_idx[0] < len(prev_seq) - 1:
+                        directions.extend([-1] * ((len(prev_seq) - diff_idx[0]) // 2))
+                        
+                for i, cur in enumerate(cur_seq):
+                    if i >= len(prev_seq) or cur != prev_seq[i]:
                         directions.append(cur)
-                prev_sequence = cur_sequence
-                cur_sequence = []
+                prev_seq = cur_seq
+                cur_seq = []
             else:
-                if cur_sequence:
-                    cur_sequence.extend((0, symbol))
-                else:
-                    cur_sequence.append(symbol)
+                cur_seq.extend((0, symbol)) if cur_seq else cur_seq.append(symbol)
 
         return directions
     

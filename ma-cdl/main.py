@@ -26,7 +26,7 @@ class Driver():
             render_mode=args.render_mode
             )
         
-        self.speaker = Speaker(args.max_symbols)
+        self.speaker = Speaker(args.min_symbols, args.max_symbols)
         self.listener = Listener()
         
     def _init_hyperparams(self):
@@ -67,7 +67,7 @@ class Driver():
             truncation = termination = False
             # Environment reset is done in self.speaker.search()
             path, obstacles, backup = self.speaker.search(self.env)
-            direction_set = self.speaker.communicate(path, obstacles, 2)
+            direction_set = self.speaker.communicate(path, obstacles)
             # Reinitialize environment with backup
             self.env.unwrapped.steps = 0
             self.env.unwrapped.world = backup

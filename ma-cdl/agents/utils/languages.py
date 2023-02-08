@@ -53,36 +53,39 @@ class Language():
             
         return reference_points, kd_trees
     
+    # Reshape origin_points into 2d array with size of (num_cols, references_per_col)
+    def _reshape(self, origin_points, references_per_col):
+        i = []
+        start, end = 0, references_per_col
+        for _ in range(references_per_col):
+            j = [origin_points[reference] for reference in range(start, end)]
+            i.append(j)
+            start += references_per_col
+            end += references_per_col
+        return i
+    
+    # Split search interval into half then compare with position to find region
     def _get_region(self, pos, origin_points):
-        if (pos > origin_points[0]).all():
-            region = 1
-        elif (pos > origin_points[0])[0] and (pos > origin_points[-1])[1]:
-            reigon = 2
-        elif (pos < origin_points[0])[0] and (pos > origin_points[-1])[1]:
-            region = 3
-        elif (pos < origin_points[-1]).all():
-            region = 4
-        
-        # Nonant
-        if (pos > origin_points[0]).all():
-            region = 1
-        elif (pos > origin_points[0])[0] and (pos > origin_points[1])[1]:
-            region = 2
-        elif (pos > origin_points[0])[0]:
-            region = 3
-        elif (pos > origin_points[2]).all():
-            region = 4
-        elif (pos > origin_points[2])[0] and (pos > origin_points[3])[1]:
-            region = 5
-        elif (pos > origin_points[2])[0]:
-            region = 6
-        elif (pos < origin_points[2])[0] and (pos > origin_points[2])[1]:
-            region = 7
-        elif (pos < origin_points[2])[0] and (pos > origin_points[3])[1]:
-            region = 8
-        elif (pos < origin_points[3]).all():
-            region = 9
-
+        references_per_col = self.num_cols - 1
+        origin_points = self._reshape(origin_points, references_per_col)   
+        for (col_num, col), idx in product(enumerate(origin_points), range(references_per_col)):
+            # N-1 columns
+            if (pos > col[idx]).all():
+                region = self.num_cols*col_num + idx + 1
+                break
+            elif (pos > col[-1-idx])[0] and (pos < col[-1-idx])[1]:
+                region = self.num_cols*(col_num+1) - idx
+                break
+            
+            # Nth column
+            if col_num == len(origin_points) - 1:
+                if (pos < col[idx])[0] and (pos > col[idx])[1]:
+                    region = self.num_cols*(col_num+1) + idx + 1
+                    break
+                elif (pos < col[-1-idx]).all():
+                    region = self.num_cols*(col_num+2) - idx
+                    break
+                
         return region
     
     # Retrieve center point(s) of region given by proximity to position

@@ -9,8 +9,9 @@ from agents.utils.search import astar
 from agents.utils.languages import LanguageFactory
 
 class Speaker:
-    def __init__(self, max_symbols):
-        self.language_set = LanguageFactory(max_symbols)
+    def __init__(self, min_symbol, max_symbol):
+        self.min_symbol, self.max_symbol = min_symbol, max_symbol
+        self.language_set = LanguageFactory(max_symbol)
         
     # Find optimal path using A* search
     def search(self, env):
@@ -31,9 +32,10 @@ class Speaker:
         obstacles = np.array([obstacle.state.p_pos for obstacle in obstacles])
         return np.array(path), obstacles, backup
 
-    # Gather directions from specified language
-    def communicate(self, path, obstacles, idx):
-        return self.language_set[idx].direct(path, obstacles)
+    # Gather directions from a random language
+    def communicate(self, path, obstacles):
+        idx = np.random.randint(self.min_symbol, self.max_symbol+1)
+        return self.language_set[2].direct(path, obstacles)
 
     def feedback(self, pos, goal):    
         a=3

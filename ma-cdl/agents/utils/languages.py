@@ -119,18 +119,19 @@ class Language():
         return symbols
     
     # Clean direction_set by removing redundant prefixes and 'END' tokens
-    # 0 indicate layer traversal, -1 indicates layer reversal, and [0-16] indicates movement
+    # -1 indicate layer traversal, -2 indicates layer reversal, and [0-16] indicates movement
     def _translate(self, symbol_list):
         directions = []
         prev_seq, cur_seq = [], []
         for symbol in symbol_list:
             if symbol == 'END':
+                # Layer reversal
                 if prev_seq: 
                     min_len = min(len(prev_seq), len(cur_seq))
                     temp_prev, temp_cur = prev_seq[:min_len], cur_seq[:min_len]
                     diff_idx = [i for i, (a, b) in enumerate(zip(temp_prev, temp_cur)) if a != b]
                     if diff_idx and diff_idx[0] < len(prev_seq) - 1:
-                        directions.extend([-1] * ((len(prev_seq) - diff_idx[0]) // 2))
+                        directions.extend([-2] * ((len(prev_seq) - diff_idx[0]) // 2))
                         
                 for i, cur in enumerate(cur_seq):
                     if i >= len(prev_seq) or cur != prev_seq[i]:
@@ -138,7 +139,8 @@ class Language():
                 prev_seq = cur_seq
                 cur_seq = []
             else:
-                cur_seq.extend((0, symbol)) if cur_seq else cur_seq.append(symbol)
+                # Layer traversal
+                cur_seq.extend((-1, symbol)) if cur_seq else cur_seq.append(symbol)
 
         return directions
     
@@ -159,8 +161,8 @@ class Language():
         return directions
     
 
-def LanguageFactory(max_symbols):
+def LanguageFactory(min_symbols, max_symbols):
     language_set = {}
-    for i in range(2, max_symbols + 1):
+    for i in range(min_symbols, max_symbols + 1):
         language_set[i] = Language(i)
     return language_set

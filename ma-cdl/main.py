@@ -72,7 +72,7 @@ class Driver():
             # Environment reset is done in self.speaker.search()
             path, obstacles, backup = self.speaker.search(self.env)
             representation_idx = self.speaker.select(path[0], path[-1], obstacles, env_shape)
-            directions = self.speaker.communicate(path, obstacles, representation_idx)
+            directions, polygons = self.speaker.communicate(path, obstacles, representation_idx)
             # Reinitialize environment with backup
             self.env.unwrapped.steps = 0
             self.env.unwrapped.world = backup
@@ -88,7 +88,7 @@ class Driver():
                 
                 self.env.step(action)
                 obs, _, termination, truncation, _ = self.env.last()
-                reward = self.speaker.feedback(obs, path[-1], obstacles, directions, representation_idx)
+                reward = self.speaker.feedback(obs, path[-1], obstacles, representation_idx, polygons)
                 episodic_return.append(reward)
                 
                 if termination or truncation:

@@ -39,22 +39,21 @@ class Speaker:
         representation_idx = np.argmax(representation_idx.detach().numpy())
         # Add min_symbol to get language_set key value
         representation_idx += self.min_symbol
+        representation_idx = 3
         return representation_idx
         
     # Gather directions from learned language
     def communicate(self, path, obstacles, idx):
-        directions = self.language_set[idx].direct(path, obstacles)
+        directions, polygons = self.language_set[idx].direct(path, obstacles)
         while len(directions) < self.direction_len:
             directions.insert(0,0)
             
         assert len(directions) == self.direction_len
-        return directions
-
-    # Convert directions to regions to ensure listener is in correct region
-    def feedback(self, pos, goal, obstacles, directions, idx):
-        # Remove padding    
-        directions = list(filter(lambda x: x != 0, directions))
+        return directions, polygons
         
+    # Convert directions to regions to ensure listener is in correct region
+    def feedback(self, pos, goal, obstacles, polygons, idx):
+        a=3        
         
     def learn(self):
         a=3

@@ -1,0 +1,34 @@
+PHASE 0: train rnn as planner
+input: language selection, start, goal, obstacles
+output: directions (vector of continuous variables)
+
+description: 
+- one single rnn trained with different languages
+- sequence of 2 numbers in vector is a region (location, size)
+- hard-code an implementation to train on as ground truth using A* and previous idea
+
+PHASE 1: agree on common language
+input: num_obstacles, env_type
+output: language selection
+
+description: 
+- generate data on environment configurations
+- concatenate language selection with environment config data and pass into rnn to produce directions
+- maximize reward where reward is a linear combination of the efficacy metrics
+- expressability is calculated by measuring the amount of the environment that the language is able to consume
+- generalization is calculated by measuring the success of reaching the goal in any given environment (binary)
+- language efficiency is calculated by measuring the amount of time it took for the rnn to become proficient in its given representation (exceeding a loss threshold)
+
+
+PHASE 2: teach listener
+input: language, start, goal, obstacles
+output: directions
+
+description:
+- once previous phases are complete, you cannot go back and change language selection
+- using inference with the rnn, directions are passed to a reinforcement learning agent where reward is given by following directions and reaching goal
+- the directions correspond to a grouping of coordinates in the environment (polygon) so as to monitor the learners adherence
+
+PHASE 3: use language
+input: directions
+output: actions

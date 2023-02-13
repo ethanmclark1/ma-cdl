@@ -8,6 +8,7 @@ from environment import simple_path
 from arguments import get_arguments
 from agents.speaker import Speaker
 from agents.listener import Listener
+from agents.utils.languages import LanguageFactory
 
 # wandb.init(project='thesis')
 # wandb.config = {
@@ -17,7 +18,7 @@ from agents.listener import Listener
 #     'max_episode_len': 128
 # }
 
-class Driver():
+class MA_CDL():
     def __init__(self, args):
         self._init_hyperparams()
         env_type = args.env_shape
@@ -29,7 +30,8 @@ class Driver():
         
         # 2 for start (xy), 2 for goal (xy), 2*num_obstacles for obstacles (xy), 1 for env_type
         input_dims = 2 + 2 + 2*args.num_obstacles + 1
-        self.speaker = Speaker(input_dims, args.min_symbol, args.max_symbol)
+        output_dims = args.max_symbol + 1 - args.min_symbol
+        self.speaker = Speaker(input_dims, output_dims)
         input_dims = self.speaker.direction_len + self.env.state_space.shape[0]
         output_dims = self.env.action_spaces['agent_0'].n
         self.listener = Listener(input_dims, output_dims)
@@ -38,9 +40,15 @@ class Driver():
         self.epochs = 30000
         self.num_alternate = 1000
         self.max_episode_len = 200
+    
+    # Speaker and Listener synchronize to a common language
+    def synchronize(self, min_symbol, max_symbol):
+        idx = 0
+        language_set = LanguageFactory(min_symbol, max_symbol)
+        return langauge_set[idx]
         
-    # Alternate between training Speaker and Listener
-    def synchronize(self):        
+    # Alternate training between training Speaker and Listener
+    def learn(self, language):        
         speaker = False
         speaker_loss, actor_loss, critic_loss = [], [], []            
             
@@ -54,14 +62,16 @@ class Driver():
                 speaker_loss.append(loss)
                 # wandb.log({'speaker_loss': np.mean(speaker_loss[-25:])})
             else:
-                batch_trajectory = self.rollout()
+                batch_trajectory = self.rollout(language)
                 loss = self.listener.train(batch_trajectory)
                 actor_loss.append(loss[0])
                 critic_loss.append(loss[1])
                 # wandb.log({'actor_loss': np.mean(actor_loss[-25:]), 'critic_loss': np.mean(critic_loss[-25:])})
+                
+        return 5
                         
     # Gather trajectories to train Listener
-    def rollout(self):
+    def rollout(self, language):
         batch_obs, batch_representation, batch_actions = [], [], []
         batch_log_probs, batch_rewards, batch_rtgs = [], [], []
         env_shape = self.env.state_space.shape[0]
@@ -71,8 +81,7 @@ class Driver():
             truncation = termination = False
             # Environment reset is done in self.speaker.search()
             path, obstacles, backup = self.speaker.search(self.env)
-            representation_idx = self.speaker.select(path[0], path[-1], obstacles, env_shape)
-            directions, polygons = self.speaker.communicate(path, obstacles, representation_idx)
+            directions, polygons = self.speaker.communicate(language, path, obstacles)
             # Reinitialize environment with backup
             self.env.unwrapped.steps = 0
             self.env.unwrapped.world = backup
@@ -105,5 +114,6 @@ class Driver():
         
 if __name__ == '__main__':
     args = get_arguments()
-    driver = Driver(args)
-    driver.synchronize()
+    ma_cdl = MA_CDL(args)
+    langauge = ma_cdl.synchronize(args.min_symbol, args.max_symbol)
+    loss = ma_cdl.learn(language)

@@ -194,8 +194,8 @@ class Language():
         return directions, polygons
     
 
-def LanguageFactory(min_symbols, max_symbols):
+def LanguageFactory(min_symbol, max_symbol):
     language_set = {}
-    for i in range(min_symbols, max_symbols + 1):
+    for i in range(min_symbol, max_symbol + 1):
         language_set[i] = Language(i)
     return language_set

@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from agents.utils.networks import ListenerNet
 
 class Listener():
-    def __init__(self, input_dims=64, output_dims=4):
+    def __init__(self, input_dims, output_dims):
         self._init_hyperparams()
         self.actor = ListenerNet(input_dims, output_dims)
         self.critic = ListenerNet(input_dims, 1)

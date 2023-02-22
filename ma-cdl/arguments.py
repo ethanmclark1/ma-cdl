@@ -3,8 +3,8 @@ import argparse
 def get_arguments():
     parser = argparse.ArgumentParser(
         description='Teach a multi-agent system to create its own context-dependent language.')
-    parser.add_argument('--env_shape', metavar='ENV', type=str, default='Square', choices=[
-                        'square', 'triangle', 'circle'], help='shape of environment space (choices: %(choices)s)')
+    # parser.add_argument('--env_shape', metavar='ENV', type=str, default='Square', choices=[
+    #                     'square', 'triangle', 'circle'], help='shape of environment space (choices: %(choices)s)')
     parser.add_argument('--num_obstacles', metavar='OBS', type=int, default=1,
                         help='number of obstacles in environment (default: %(default)s)')
     parser.add_argument('--num_languages', metavar='LANG', type=int, default=8,

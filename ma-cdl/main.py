@@ -1,4 +1,3 @@
-import pdb
 import copy
 import torch
 import numpy as np
@@ -7,17 +6,17 @@ from arguments import get_arguments
 from environment import simple_path
 from agents.speaker import Speaker
 from agents.listener import Listener
+from agents.utils.language import Language
 
 class MA_CDL():
     def __init__(self, args):
-        self.memory = []
         self._init_hyperparams()
         self.env = simple_path.env(
             max_cycles=self.max_episode_len, 
             num_obstacles=args.num_obstacles,
             render_mode=args.render_mode
             )
-        self.env_type = args.env_shape
+        self.language = Language(args.num_obstacles, args.num_languages).get_langauge()
         self.speaker = Speaker(args.num_languages, args.num_obstacles)
         self.listener = Listener(args.num_obstacles, self.env.action_space('agent_0').n)
         
@@ -28,7 +27,6 @@ class MA_CDL():
         self.max_episode_len = 200
     
     def rollout(self):
-        language = self.speaker.create_language()
         a=3
         
     

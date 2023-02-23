@@ -2,7 +2,6 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
-from shapely import plotting
 from itertools import product
 from statistics import variance
 from scipy.optimize import minimize
@@ -20,32 +19,30 @@ class Language:
             atan = math.atan2(x[1], x[0])
             return (atan, x[0]**2+x[1]**2) if atan >= 0 else (2*math.pi + atan, x[0]**2+x[1]**2)
 
-        valid_intersections = []
+        valid_lines = []
         regions, region_points = [], {}
-        boundaries = [*self.boundaries.exterior.coords]
-        intersections = self.boundaries.intersection(lines)
-
+        critical_points = set(*self.boundaries.exterior.coords)
+        
+        # Both endpoints must intersect with environment boundary to be considered valid
+        for line in lines:
+            intersection = self.boundaries.intersection(line)
+            if not intersection.is_empty and np.any(np.abs([*intersection.coords]) == 1, axis=1).all():
+                valid_lines.append(intersection)
+                plt.plot(*intersection.xy)
+                
         plt.plot(*self.boundaries.exterior.xy)
-        plotting.plot_line(intersections)
         plt.show()
-
-        # Check for intersections
-        if intersections:
-            if intersections.geom_type == 'MultiLineString':
-                intersections = [[*intersections.geoms[i].coords]
-                                 for i in range(len(intersections.geoms))]
-            else:
-                intersections = [[*intersections.coords]]
-
-            # Valid intersection must be on the environment boundary
-            for point in intersections:
-                if np.any(np.abs(point) == 1, axis=1).all():
-                    valid_intersections.append(point)
-            
-            # TODO: Check for valid lines that intersect
-
+        
+        # Intersection points between valid lines
+        for line_0, line_1 in product(valid_lines, valid_lines):
+            if line_0 != line_1:
+                intersection = line_0.intersection(line_1)
+                if not intersection.is_empty:
+                    critical_points.add(intersection)                
+        
+        # TODO: Create regions based on intersection points
         # TODO: Do not create duplicate regions from different perspectives
-        for valid in valid_intersections:
+        for valid in valid_lines:
             region_points[0], region_points[1] = set(valid), set(valid)
             for boundary in boundaries:
                 # Cross product to find which side of the line the boundary is on
@@ -69,7 +66,6 @@ class Language:
         print(lines)
         lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])])
                  for i in range(0, len(lines), 4)]
-        lines = MultiLineString(lines)
         regions = self._create_regions(lines)
 
         if regions:
@@ -95,7 +91,8 @@ class Language:
         bounds = (-3, 3)
         optim_val, optim_coeffs = math.inf, None
         for num in range(2, self.num_languages+2):
-            x0 = (bounds[1] - bounds[0])*np.random.rand(num, 4)+bounds[0]
+            # TODO: Add num back into x0 [np.random.rand(num, 4)]
+            x0 = (bounds[1] - bounds[0])*np.random.rand(5, 4)+bounds[0]
             res = minimize(self._optimizer, x0, method='nelder-mead',
                            options={'xatol': 1e-8})
 

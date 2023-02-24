@@ -6,8 +6,10 @@ from agents.utils.search import astar
 from agents.utils.networks import Planner
 
 class Speaker:
-    def __init__(self, language):
-        self.language = language
+    def __init__(self, language, num_obstacles):
+        input_dims = language*4 + num_obstacles*2 + 2 + 2
+        self.planner = Planner(input_dims) 
+        self.langauge = language
                 
     # Find optimal path using A* search
     def search(self, env):
@@ -29,5 +31,6 @@ class Speaker:
         return np.array(path), obstacles, backup
     
     def direct(self, path, obstacles):
-        a=3
+        directions = self.planner(language, path, obstacles)
+        return directions
 

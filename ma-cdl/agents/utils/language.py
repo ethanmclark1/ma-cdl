@@ -12,47 +12,55 @@ class Language:
         self.obs_size = 0.02
         self.num_obstacles = num_obstacles
         self.num_languages = num_languages
-        self.boundaries = Polygon([(1, 1), (1, -1), (-1, -1), (-1, 1)])
+        self.env_shape = Polygon([(1, 1), (-1, 1), (-1, -1), (1, -1)])
+        self.env_lines = [LineString([(1, 1), (-1, 1)]), LineString([(-1, 1), (-1, -1)]), 
+                          LineString([(-1, -1), (1, -1)]), LineString([(1, -1), (1, 1)])]
+    
+    # Both endpoints must be on an environment boundary to be considered valid
+    def _get_valid_lines(self, lines):
+        critical_points, valid_lines = set(), []
         
+        for line in lines:
+            intersection = self.env_shape.intersection(line)
+            if not intersection.is_empty and np.any(np.abs([*intersection.coords]) == 1, axis=1).all():
+                valid_lines.append(intersection)
+                plt.plot(*intersection.xy)
+
+        plt.plot(*self.env_shape.exterior.xy)
+        plt.show()
+                
+        valid_lines.extend([*self.env_lines])
+        return valid_lines
+    
+    def _regionalize(self, line, valid_lines, region_points=[Point(1,1)]):
+        start_point = Point(line.coords[0])
+        intersections = [line.intersection(valid) for valid in valid_lines]
+        closest_point = min(intersections, key=lambda x: x.distance(start_point) 
+                            if x != start_point and not x.is_empty else math.inf)
+        
+        if closest_point in region_points:
+            return region_points
+        else:
+            region_points.append(closest_point)
+            line = valid_lines[intersections.index(closest_point)]
+            valid_lines.remove(line)
+            region_points = self._regionalize(line, valid_lines, region_points)
+                                
+    
+    # Create regions from valid lines and critical points            
     def _create_regions(self, lines):
+        # Counter clockwise sort of starting points of critical lines
         def sort(x):
             atan = math.atan2(x[1], x[0])
             return (atan, x[0]**2+x[1]**2) if atan >= 0 else (2*math.pi + atan, x[0]**2+x[1]**2)
 
-        valid_lines = []
-        regions, region_points = [], {}
-        critical_points = set(*self.boundaries.exterior.coords)
-        
-        # Both endpoints must intersect with environment boundary to be considered valid
-        for line in lines:
-            intersection = self.boundaries.intersection(line)
-            if not intersection.is_empty and np.any(np.abs([*intersection.coords]) == 1, axis=1).all():
-                valid_lines.append(intersection)
-                plt.plot(*intersection.xy)
-                
-        plt.plot(*self.boundaries.exterior.xy)
-        plt.show()
-        
-        # Intersection points between valid lines
-        for line_0, line_1 in product(valid_lines, valid_lines):
-            if line_0 != line_1:
-                intersection = line_0.intersection(line_1)
-                if not intersection.is_empty:
-                    critical_points.add(intersection)                
-        
-        # TODO: Create regions based on intersection points
-        # TODO: Do not create duplicate regions from different perspectives
-        for valid in valid_lines:
-            region_points[0], region_points[1] = set(valid), set(valid)
-            for boundary in boundaries:
-                # Cross product to find which side of the line the boundary is on
-                v1 = (valid[1][0] - valid[0][0], valid[1][1] - valid[0][1])
-                v2 = (valid[1][0] - boundary[0], valid[1][1] - boundary[1])
-                xp = v1[0]*v2[1] - v1[1]*v2[0]
-                idx = 0 if xp > 0 else 1
-                region_points[idx].add(boundary)
-            regions.extend(([Polygon(sorted(list(region_points[idx]), key=sort))
-                           for idx in range(len(region_points))]))
+        regions = []
+        valid_lines = self._get_valid_lines(lines)
+        valid_lines = sorted(valid_lines, key=lambda x: sort(x.coords[0]))
+
+        # Recursively find boundaries of regions by traversing the perimeter
+        for idx, line in enumerate(valid_lines, start=1):
+            region = self._regionalize(line, valid_lines[idx:])
 
         return regions
 
@@ -72,14 +80,14 @@ class Language:
             # 1. Probability of colliding into an obstacle
             for obs, region in product(obs_list, regions):
                 if region.contains(obs):
-                    region_prob += (region.area / self.boundaries.area)
+                    region_prob += (region.area / self.env_shape.area)
                     obs_prob += (self.obs_size / region.area)
                     nonnavigable.append(region.area)
             collision_prob = region_prob * obs_prob
             # 2. Variance on region area
             region_var = variance([region.area for region in regions])
             # 3. Amount of navigable space
-            navigable_space = self.boundaries.area - sum(nonnavigable)
+            navigable_space = self.env_shape.area - sum(nonnavigable)
             # TODO 4. Variance on navigable space across problems
             navigable_space_var = 3
         

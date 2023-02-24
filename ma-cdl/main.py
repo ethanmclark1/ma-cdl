@@ -16,8 +16,8 @@ class MA_CDL():
             num_obstacles=args.num_obstacles,
             render_mode=args.render_mode
             )
-        self.language = Language(args.num_obstacles, args.num_languages).get_langauge()
-        self.speaker = Speaker(args.num_languages, args.num_obstacles)
+        language = Language(args.num_obstacles, args.num_languages).get_langauge()
+        self.speaker = Speaker(language, args.num_obstacles, args.num_languages)
         self.listener = Listener(args.num_obstacles, self.env.action_space('agent_0').n)
         
     def _init_hyperparams(self):

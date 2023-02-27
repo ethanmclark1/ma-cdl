@@ -4,49 +4,53 @@ import matplotlib.pyplot as plt
 
 from itertools import product
 from statistics import variance
+from scipy.spatial import Delaunay
 from scipy.optimize import minimize
-from shapely.geometry import Point, LineString, MultiLineString, Polygon
+from shapely.geometry import Point, LineString, Polygon
 
 class Language:
     def __init__(self, num_obstacles, num_languages):
         self.obs_size = 0.02
         self.num_obstacles = num_obstacles
         self.num_languages = num_languages
-        self.env_shape = Polygon([(1, 1), (-1, 1), (-1, -1), (1, -1)])
-        self.env_lines = [LineString([(1, 1), (-1, 1)]), LineString([(-1, 1), (-1, -1)]), 
+        self.points = [Point(1, 1), Point(-1, 1), Point(-1, -1), Point(1, -1)]
+        self.lines = [LineString([(1, 1), (-1, 1)]), LineString([(-1, 1), (-1, -1)]), 
                           LineString([(-1, -1), (1, -1)]), LineString([(1, -1), (1, 1)])]
+        self.shape = Polygon([(1, 1), (-1, 1), (-1, -1), (1, -1)])
     
     # Both endpoints must be on an environment boundary to be considered valid
-    def _get_valid_lines(self, lines):
-        critical_points, valid_lines = set(), []
-        
+    def _get_line_info(self, lines):
+        valid_lines = []
+        segmented_lines = [*self.lines]
+
+        # Get valid lines s.t. both endpoints are on an environment boundary
         for line in lines:
-            intersection = self.env_shape.intersection(line)
+            intersection = self.shape.intersection(line)
             if not intersection.is_empty and np.any(np.abs([*intersection.coords]) == 1, axis=1).all():
                 valid_lines.append(intersection)
                 plt.plot(*intersection.xy)
 
-        plt.plot(*self.env_shape.exterior.xy)
+        plt.plot(*self.shape.exterior.xy)
         plt.show()
-                
-        valid_lines.extend([*self.env_lines])
-        return valid_lines
-    
-    def _regionalize(self, line, valid_lines, region_points=[Point(1,1)]):
-        start_point = Point(line.coords[0])
-        intersections = [line.intersection(valid) for valid in valid_lines]
-        closest_point = min(intersections, key=lambda x: x.distance(start_point) 
-                            if x != start_point and not x.is_empty else math.inf)
         
-        if closest_point in region_points:
-            return region_points
-        else:
-            region_points.append(closest_point)
-            line = valid_lines[intersections.index(closest_point)]
-            valid_lines.remove(line)
-            region_points = self._regionalize(line, valid_lines, region_points)
-                                
+        # Segment lines based on intersections with environment boundaries
+        for valid, bound in product(valid_lines, segmented_lines):
+            intersection = valid.intersection(bound)
+            if intersection.is_empty or intersection in self.points:
+                continue
+            line_0 = LineString([bound.coords[0], intersection])
+            line_1 = LineString([intersection, bound.coords[1]])
+            segmented_lines.remove(bound)
+            segmented_lines += [line_0, line_1]
+            
+        # Segment lines based on intersections with other valid lines
+            
+        return segmented_lines
     
+    def _regionalize(self, line, critical_points, valid_lines):
+        a=3
+            
+            
     # Create regions from valid lines and critical points            
     def _create_regions(self, lines):
         # Counter clockwise sort of starting points of critical lines
@@ -55,12 +59,12 @@ class Language:
             return (atan, x[0]**2+x[1]**2) if atan >= 0 else (2*math.pi + atan, x[0]**2+x[1]**2)
 
         regions = []
-        valid_lines = self._get_valid_lines(lines)
-        valid_lines = sorted(valid_lines, key=lambda x: sort(x.coords[0]))
+        segmented_lines = self._get_line_info(lines)
+        segmented_lines = sorted(segmented_lines, key=lambda x: sort(x.coords[0]))
 
         # Recursively find boundaries of regions by traversing the perimeter
-        for idx, line in enumerate(valid_lines, start=1):
-            region = self._regionalize(line, valid_lines[idx:])
+        for idx, line in enumerate(segmented_lines, start=1):
+            regions += [self._regionalize(line, segmented_lines[idx:])]
 
         return regions
 
@@ -80,14 +84,14 @@ class Language:
             # 1. Probability of colliding into an obstacle
             for obs, region in product(obs_list, regions):
                 if region.contains(obs):
-                    region_prob += (region.area / self.env_shape.area)
+                    region_prob += (region.area / self.shape.area)
                     obs_prob += (self.obs_size / region.area)
                     nonnavigable.append(region.area)
             collision_prob = region_prob * obs_prob
             # 2. Variance on region area
             region_var = variance([region.area for region in regions])
             # 3. Amount of navigable space
-            navigable_space = self.env_shape.area - sum(nonnavigable)
+            navigable_space = self.shape.area - sum(nonnavigable)
             # TODO 4. Variance on navigable space across problems
             navigable_space_var = 3
         

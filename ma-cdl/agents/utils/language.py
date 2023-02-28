@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 
 from itertools import product
 from statistics import variance
-from scipy.spatial import Delaunay
 from scipy.optimize import minimize
+from shapely.ops import polygonize, split
 from shapely.geometry import Point, LineString, Polygon
 
 class Language:
@@ -20,8 +20,9 @@ class Language:
     
     # Both endpoints must be on an environment boundary to be considered valid
     def _get_line_info(self, lines):
-        valid_lines = []
-        segmented_lines = [*self.lines]
+        split_lines = set()
+        valid_lines = [*self.lines]
+        garbage_lines = set()
 
         # Get valid lines s.t. both endpoints are on an environment boundary
         for line in lines:
@@ -32,40 +33,30 @@ class Language:
 
         plt.plot(*self.shape.exterior.xy)
         plt.show()
-        
-        # Segment lines based on intersections with environment boundaries
-        for valid, bound in product(valid_lines, segmented_lines):
-            intersection = valid.intersection(bound)
-            if intersection.is_empty or intersection in self.points:
+
+        # TODO: Split lines at intersection points
+        for line_0, line_1 in product(valid_lines, repeat=2):
+            if line_0 == line_1:
                 continue
-            line_0 = LineString([bound.coords[0], intersection])
-            line_1 = LineString([intersection, bound.coords[1]])
-            segmented_lines.remove(bound)
-            segmented_lines += [line_0, line_1]
+            result = split(line_0, line_1)
+            split_lines.update([*result.geoms])
+            # Remove lines that have been split into two lines
+            if len(result.geoms) == 2:
+                if line_0 in self.lines:
+                    garbage_lines.add(line_0)
+                elif line_1 in self.lines:
+                    garbage_lines.add(line_1)
+                elif line_0 not in self.lines and line_1 not in self.lines:
+                    garbage_lines.update([line_0, line_1])
+
+        split_lines -= garbage_lines
+        return split_lines            
             
-        # Segment lines based on intersections with other valid lines
-            
-        return segmented_lines
-    
-    def _regionalize(self, line, critical_points, valid_lines):
-        a=3
-            
-            
-    # Create regions from valid lines and critical points            
+    # Create regions from valid lines
     def _create_regions(self, lines):
-        # Counter clockwise sort of starting points of critical lines
-        def sort(x):
-            atan = math.atan2(x[1], x[0])
-            return (atan, x[0]**2+x[1]**2) if atan >= 0 else (2*math.pi + atan, x[0]**2+x[1]**2)
-
-        regions = []
         segmented_lines = self._get_line_info(lines)
-        segmented_lines = sorted(segmented_lines, key=lambda x: sort(x.coords[0]))
-
-        # Recursively find boundaries of regions by traversing the perimeter
-        for idx, line in enumerate(segmented_lines, start=1):
-            regions += [self._regionalize(line, segmented_lines[idx:])]
-
+        regions = list(polygonize(segmented_lines))
+        print(regions)
         return regions
 
     def _optimizer(self, lines):

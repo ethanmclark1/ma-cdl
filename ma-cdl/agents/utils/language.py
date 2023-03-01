@@ -18,12 +18,51 @@ class Language:
                           LineString([(-1, -1), (1, -1)]), LineString([(1, -1), (1, 1)])]
         self.shape = Polygon([(1, 1), (-1, 1), (-1, -1), (1, -1)])
     
+    # Split lines that intersect with each other
+    def split_lines(self, lines, idx=0):
+        if idx == len(lines):
+            return lines
+        
+        split_lines, garbage_lines = [], []
+        line_0 = lines[idx]
+        for line_1 in lines:
+            try:
+                result = split(line_0, line_1)
+                split_lines.extend([*result.geoms])
+                if len(result.geoms) == 2:
+                    if line_0 in self.lines:
+                        garbage_lines.append(line_0)
+                    elif line_1 in self.lines:
+                        garbage_lines.append(line_1)
+                    # TODO: When neither line is the environment boundary but the boundary was partitioned, 
+                    # fix this case. Causes the intersecting line to be removed which should not happen
+                    elif line_0 not in self.lines and line_1 not in self.lines:
+                        garbage_lines.extend([line_0, line_1])
+            except ValueError:
+                if line_0 == line_1:
+                    continue
+                elif line_0.contains(line_1):
+                    garbage_lines.append(line_0)
+                    difference = line_0.difference(line_1)
+                    split_lines.append(difference)
+                elif line_1.contains(line_0):
+                    garbage_lines.append(line_1)
+                    difference = line_1.difference(line_0)
+                    split_lines.append(difference)
+        
+        split_lines = list(dict.fromkeys(split_lines))
+        garbage_lines = list(dict.fromkeys(garbage_lines))
+        split_lines = [line for line in split_lines if line not in lines]
+        lines[idx:idx] = split_lines
+        lines = [line for line in lines if line not in garbage_lines]
+        idx += 1 if not garbage_lines else 0
+        lines = self.split_lines(lines, idx)
+        return lines
+            
     # Both endpoints must be on an environment boundary to be considered valid
     def _get_line_info(self, lines):
-        split_lines = set()
         valid_lines = [*self.lines]
-        garbage_lines = set()
-
+        
         # Get valid lines s.t. both endpoints are on an environment boundary
         for line in lines:
             intersection = self.shape.intersection(line)
@@ -33,29 +72,14 @@ class Language:
 
         plt.plot(*self.shape.exterior.xy)
         plt.show()
-
-        # TODO: Split lines at intersection points
-        for line_0, line_1 in product(valid_lines, repeat=2):
-            if line_0 == line_1:
-                continue
-            result = split(line_0, line_1)
-            split_lines.update([*result.geoms])
-            # Remove lines that have been split into two lines
-            if len(result.geoms) == 2:
-                if line_0 in self.lines:
-                    garbage_lines.add(line_0)
-                elif line_1 in self.lines:
-                    garbage_lines.add(line_1)
-                elif line_0 not in self.lines and line_1 not in self.lines:
-                    garbage_lines.update([line_0, line_1])
-
-        split_lines -= garbage_lines
-        return split_lines            
+        
+        split_lines = self.split_lines(valid_lines)        
+        return split_lines        
             
     # Create regions from valid lines
     def _create_regions(self, lines):
-        segmented_lines = self._get_line_info(lines)
-        regions = list(polygonize(segmented_lines))
+        split_lines = self._get_line_info(lines)
+        regions = list(polygonize(split_lines))
         print(regions)
         return regions
 
@@ -66,7 +90,6 @@ class Language:
         # Obstacle(s) constrained to be in top right quadrant
         obs_pos = np.random.rand(self.num_obstacles, 2)
         obs_list = [Point(obs_pos[i]) for i in range(self.num_obstacles)]
-        print(lines)
         lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])])
                  for i in range(0, len(lines), 4)]
         regions = self._create_regions(lines)

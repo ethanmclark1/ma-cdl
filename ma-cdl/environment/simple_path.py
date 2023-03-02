@@ -8,9 +8,9 @@ from environment.utils.simple_env import SimpleEnv, make_env
 
 
 class raw_env(SimpleEnv, EzPickle):
-    def __init__(self, max_cycles=25, num_obstacles=3, continuous_actions=False, render_mode=None):
+    def __init__(self, max_cycles=25, num_obstacles=3, obstacle_size=0.02, continuous_actions=False, render_mode=None):
         scenario = Scenario()
-        world = scenario.make_world(num_obstacles)
+        world = scenario.make_world(num_obstacles, obstacle_size)
         super().__init__(
             scenario=scenario, 
             world=world, 
@@ -24,7 +24,7 @@ class raw_env(SimpleEnv, EzPickle):
 env = make_env(raw_env)
 
 class Scenario(BaseScenario):
-    def make_world(self, num_obstacles):
+    def make_world(self, num_obstacles, obstacle_size):
         world = World()
         # add agents
         world.agents = [Agent() for i in range(1)]
@@ -39,7 +39,7 @@ class Scenario(BaseScenario):
             landmark.name = "landmark %d" % i
             landmark.collide = False
             landmark.movable = False
-            landmark.size = 0.02
+            landmark.size = obstacle_size
         return world
 
     def reset_world(self, world, np_random):

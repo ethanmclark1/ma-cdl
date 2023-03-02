@@ -3,26 +3,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from itertools import product
-from statistics import variance
 from scipy.optimize import minimize
+from statistics import mean, variance
 from shapely.ops import polygonize, split
+from sklearn.preprocessing import StandardScaler
 from shapely.geometry import Point, LineString, Polygon
 
 class Language:
-    def __init__(self, num_obstacles, num_languages):
+    def __init__(self, num_obstacles, obstacle_radius, num_languages):
         corners = list(product((1, -1), repeat=2))
-        self._init_hyperparams()
+        self.configs_to_consider = 10
         self.num_obstacles = num_obstacles
         self.num_languages = num_languages
+        self.obs_area = (math.pi*obstacle_radius) ** 2
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
                            LineString([corners[2], corners[3]]),
                            LineString([corners[3], corners[1]]),
                            LineString([corners[1], corners[0]])]
-        
-    def _init_hyperparams(self):
-        self.obs_size = 0.02
-        self.configs_to_consider = 10
     
     # Split lines that intersect with each other
     def split_lines(self, lines, idx=0):
@@ -87,43 +85,35 @@ class Language:
         print(len(regions))
         return regions
 
+    # Cost function to minimize:
+    # 1. Mean and variance of collision probability
+    # 2. Mean and variance of non-navigable area
     def _optimizer(self, lines):
         lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])]) 
                  for i in range(0, len(lines), 4)]
         regions = self._create_regions(lines)
         
-        cost = math.inf
-        configs_to_consider = 10
-        region_prob, obs_prob, nonnavigable = 0, 0, []
+        collision_prob, nonnavigable = [], []
         # Obstacle(s) are constrained to be in the top right quadrant
-        for config in range(configs_to_consider):
+        for _ in range(self.configs_to_consider):
+            region_prob, obs_prob, unsafe = 0, 0, 0
             obs_pos = np.random.rand(self.num_obstacles, 2)
             obs_list = [Point(obs_pos[i]) for i in range(self.num_obstacles)]
             
             for obs, region in product(obs_list, regions):
                 if region.contains(obs):
                     region_prob += (region.area / self.square.area)
-                    obs_prob += (self.obs_size / region.area)
-                    nonnavigable.append(region.area)
-
+                    obs_prob += (self.obs_area / region.area)
+                    unsafe += region.area
+            collision_prob.append(obs_prob / region_prob)
+            nonnavigable.append(unsafe)
         
-        
-        # 1. Probability of colliding into an obstacle
-        for obs, region in product(obs_list, regions):
-            if region.contains(obs):
-                region_prob += (region.area / self.square.area)
-                obs_prob += (self.obs_size / region.area)
-                nonnavigable.append(region.area)
-        collision_prob = region_prob * obs_prob
-        # 2. Variance on region area
-        region_var = variance([region.area for region in regions])
-        # 3. Amount of navigable space
-        navigable_space = self.square.area - sum(nonnavigable)
-        # TODO 4. Variance on navigable space across problems
-        navigable_space_var = 3
-    
-        cost = 0.3*collision_prob + 0.15*region_var + (-0.3*navigable_space) + 0.25*navigable_space_var
-            
+        # TODO: Standardize values
+        col_mu = mean(collision_prob)
+        col_var = variance(collision_prob)
+        nav_mu = mean(nonnavigable)
+        nav_var = variance(nonnavigable)
+        cost = col_mu + col_var + nav_mu + nav_var
         return cost
 
     def _generate_lines(self):
@@ -143,4 +133,6 @@ class Language:
         return optim_coeffs
     
     def get_langauge(self):
-        return self._generate_lines()
+        lines = self._generate_lines()
+        regions = self._create_regions(lines)
+        return regions

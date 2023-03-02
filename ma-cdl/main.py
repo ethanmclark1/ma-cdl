@@ -14,9 +14,10 @@ class MA_CDL():
         self.env = simple_path.env(
             max_cycles=self.max_episode_len, 
             num_obstacles=args.num_obstacles,
+            obstacle_size=args.obstacle_size,
             render_mode=args.render_mode
             )
-        language = Language(args.num_obstacles, args.num_languages).get_langauge()
+        language = Language(args.num_obstacles, args.obstacle_size, args.num_languages).get_langauge()
         self.speaker = Speaker(language, args.num_obstacles, args.num_languages)
         self.listener = Listener(args.num_obstacles, self.env.action_space('agent_0').n)
         

@@ -10,13 +10,19 @@ from shapely.geometry import Point, LineString, Polygon
 
 class Language:
     def __init__(self, num_obstacles, num_languages):
-        self.obs_size = 0.02
+        corners = list(product((1, -1), repeat=2))
+        self._init_hyperparams()
         self.num_obstacles = num_obstacles
         self.num_languages = num_languages
-        self.points = [Point(1, 1), Point(-1, 1), Point(-1, -1), Point(1, -1)]
-        self.lines = [LineString([(1, 1), (-1, 1)]), LineString([(-1, 1), (-1, -1)]), 
-                          LineString([(-1, -1), (1, -1)]), LineString([(1, -1), (1, 1)])]
-        self.shape = Polygon([(1, 1), (-1, 1), (-1, -1), (1, -1)])
+        self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
+        self.boundaries = [LineString([corners[0], corners[2]]),
+                           LineString([corners[2], corners[3]]),
+                           LineString([corners[3], corners[1]]),
+                           LineString([corners[1], corners[0]])]
+        
+    def _init_hyperparams(self):
+        self.obs_size = 0.02
+        self.configs_to_consider = 10
     
     # Split lines that intersect with each other
     def split_lines(self, lines, idx=0):
@@ -30,18 +36,13 @@ class Language:
                 result = split(line_0, line_1)
                 split_lines.extend([*result.geoms])
                 if len(result.geoms) == 2:
-                    if line_0 in self.lines:
-                        garbage_lines.append(line_0)
-                    elif line_1 in self.lines:
-                        garbage_lines.append(line_1)
-                    # TODO: When neither line is the environment boundary but the boundary was partitioned, 
-                    # fix this case. Causes the intersecting line to be removed which should not happen
-                    elif line_0 not in self.lines and line_1 not in self.lines:
-                        garbage_lines.extend([line_0, line_1])
+                    garbage_line = line_0 if line_0 in self.boundaries else line_1
+                    garbage_lines.append(garbage_line)
             except ValueError:
                 if line_0 == line_1:
                     continue
-                elif line_0.contains(line_1):
+                
+                if line_0.contains(line_1):
                     garbage_lines.append(line_0)
                     difference = line_0.difference(line_1)
                     split_lines.append(difference)
@@ -49,6 +50,9 @@ class Language:
                     garbage_lines.append(line_1)
                     difference = line_1.difference(line_0)
                     split_lines.append(difference)
+                # TODO: Lines are parallel, but neither consumes the other
+                else:
+                    a=3
         
         split_lines = list(dict.fromkeys(split_lines))
         garbage_lines = list(dict.fromkeys(garbage_lines))
@@ -61,16 +65,16 @@ class Language:
             
     # Both endpoints must be on an environment boundary to be considered valid
     def _get_line_info(self, lines):
-        valid_lines = [*self.lines]
+        valid_lines = [*self.boundaries]
         
         # Get valid lines s.t. both endpoints are on an environment boundary
         for line in lines:
-            intersection = self.shape.intersection(line)
+            intersection = self.square.intersection(line)
             if not intersection.is_empty and np.any(np.abs([*intersection.coords]) == 1, axis=1).all():
                 valid_lines.append(intersection)
                 plt.plot(*intersection.xy)
 
-        plt.plot(*self.shape.exterior.xy)
+        plt.plot(*self.square.exterior.xy)
         plt.show()
         
         split_lines = self.split_lines(valid_lines)        
@@ -80,36 +84,45 @@ class Language:
     def _create_regions(self, lines):
         split_lines = self._get_line_info(lines)
         regions = list(polygonize(split_lines))
-        print(regions)
+        print(len(regions))
         return regions
 
     def _optimizer(self, lines):
-        cost = math.inf
-        obs_prob, region_prob = 0, 0
-        nonnavigable = []
-        # Obstacle(s) constrained to be in top right quadrant
-        obs_pos = np.random.rand(self.num_obstacles, 2)
-        obs_list = [Point(obs_pos[i]) for i in range(self.num_obstacles)]
-        lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])])
+        lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])]) 
                  for i in range(0, len(lines), 4)]
         regions = self._create_regions(lines)
-
-        if regions:
-            # 1. Probability of colliding into an obstacle
+        
+        cost = math.inf
+        configs_to_consider = 10
+        region_prob, obs_prob, nonnavigable = 0, 0, []
+        # Obstacle(s) are constrained to be in the top right quadrant
+        for config in range(configs_to_consider):
+            obs_pos = np.random.rand(self.num_obstacles, 2)
+            obs_list = [Point(obs_pos[i]) for i in range(self.num_obstacles)]
+            
             for obs, region in product(obs_list, regions):
                 if region.contains(obs):
-                    region_prob += (region.area / self.shape.area)
+                    region_prob += (region.area / self.square.area)
                     obs_prob += (self.obs_size / region.area)
                     nonnavigable.append(region.area)
-            collision_prob = region_prob * obs_prob
-            # 2. Variance on region area
-            region_var = variance([region.area for region in regions])
-            # 3. Amount of navigable space
-            navigable_space = self.shape.area - sum(nonnavigable)
-            # TODO 4. Variance on navigable space across problems
-            navigable_space_var = 3
+
         
-            cost = 0.3*collision_prob + 0.15*region_var + (-0.3*navigable_space) + 0.25*navigable_space_var
+        
+        # 1. Probability of colliding into an obstacle
+        for obs, region in product(obs_list, regions):
+            if region.contains(obs):
+                region_prob += (region.area / self.square.area)
+                obs_prob += (self.obs_size / region.area)
+                nonnavigable.append(region.area)
+        collision_prob = region_prob * obs_prob
+        # 2. Variance on region area
+        region_var = variance([region.area for region in regions])
+        # 3. Amount of navigable space
+        navigable_space = self.square.area - sum(nonnavigable)
+        # TODO 4. Variance on navigable space across problems
+        navigable_space_var = 3
+    
+        cost = 0.3*collision_prob + 0.15*region_var + (-0.3*navigable_space) + 0.25*navigable_space_var
             
         return cost
 

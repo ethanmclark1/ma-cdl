@@ -6,16 +6,15 @@ from itertools import product
 from scipy.optimize import minimize
 from statistics import mean, variance
 from shapely.ops import polygonize, split
-from sklearn.preprocessing import StandardScaler
 from shapely.geometry import Point, LineString, Polygon
 
 class Language:
-    def __init__(self, num_obstacles, obstacle_radius, num_languages):
+    def __init__(self, args):
         corners = list(product((1, -1), repeat=2))
         self.configs_to_consider = 10
-        self.num_obstacles = num_obstacles
-        self.num_languages = num_languages
-        self.obs_area = (math.pi*obstacle_radius) ** 2
+        self.num_obstacles = args.num_obstacles
+        self.num_languages = args.num_languages
+        self.obs_area = (math.pi*args.obstacle_radius) ** 2
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
                            LineString([corners[2], corners[3]]),
@@ -23,10 +22,10 @@ class Language:
                            LineString([corners[1], corners[0]])]
     
     # Split lines that intersect with each other
-    def split_lines(self, lines, idx=0):
+    def _split_lines(self, lines, idx=0):
         if idx == len(lines):
             return lines
-        
+
         split_lines, garbage_lines = [], []
         line_0 = lines[idx]
         for line_1 in lines:
@@ -58,11 +57,11 @@ class Language:
         lines[idx:idx] = split_lines
         lines = [line for line in lines if line not in garbage_lines]
         idx += 1 if not garbage_lines else 0
-        lines = self.split_lines(lines, idx)
+        lines = self._split_lines(lines, idx)
         return lines
             
     # Both endpoints must be on an environment boundary to be considered valid
-    def _get_line_info(self, lines):
+    def _get_valid_lines(self, lines):
         valid_lines = [*self.boundaries]
         
         # Get valid lines s.t. both endpoints are on an environment boundary
@@ -75,19 +74,22 @@ class Language:
         plt.plot(*self.square.exterior.xy)
         plt.show()
         
-        split_lines = self.split_lines(valid_lines)        
-        return split_lines        
+        return valid_lines        
             
-    # Create regions from valid lines
+    # Create polygonal regions from lines
     def _create_regions(self, lines):
-        split_lines = self._get_line_info(lines)
+        valid_lines = self._get_valid_lines(lines)
+        split_lines = self._split_lines(valid_lines)
         regions = list(polygonize(split_lines))
         print(len(regions))
         return regions
 
-    # Cost function to minimize:
-    # 1. Mean and variance of collision probability
-    # 2. Mean and variance of non-navigable area
+    """ 
+    Cost function to minimize:
+        1. Mean and variance of collision probability
+        2. Mean and variance of non-navigable area
+        3. Variance of region area 
+    """
     def _optimizer(self, lines):
         lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])]) 
                  for i in range(0, len(lines), 4)]
@@ -108,14 +110,16 @@ class Language:
             collision_prob.append(obs_prob / region_prob)
             nonnavigable.append(unsafe)
         
-        # TODO: Standardize values
-        col_mu = mean(collision_prob)
-        col_var = variance(collision_prob)
-        nav_mu = mean(nonnavigable)
-        nav_var = variance(nonnavigable)
-        cost = col_mu + col_var + nav_mu + nav_var
+        collision_mu = mean(collision_prob)
+        collision_var = variance(collision_prob)
+        navigable_mu = mean(nonnavigable)
+        navigable_var = variance(nonnavigable)
+        region_var = variance([region.area for region in regions])
+        # TODO: Linear combination of cost function
+        cost = collision_mu + collision_var + navigable_mu + navigable_var
         return cost
 
+    # Minimizes cost function to generate lines
     def _generate_lines(self):
         bounds = (-3, 3)
         optim_val, optim_coeffs = math.inf, None
@@ -132,7 +136,8 @@ class Language:
         optim_coeffs = np.reshape(optim_coeffs, (-1, 4))
         return optim_coeffs
     
-    def get_langauge(self):
+    # Returns regions that define the language
+    def create(self):
         lines = self._generate_lines()
         regions = self._create_regions(lines)
         return regions

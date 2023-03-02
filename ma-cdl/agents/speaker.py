@@ -1,16 +1,17 @@
 import copy
-import math
 import numpy as np
 
+from math import inf
+from shapely.geometry import Point
 from agents.utils.search import astar
-from agents.utils.networks import Planner
 
 class Speaker:
-    def __init__(self, language, num_obstacles):
-        input_dims = language*4 + num_obstacles*2 + 2 + 2
-        self.planner = Planner(input_dims) 
+    def __init__(self):
+        self.langauge = None
+    
+    def set_language(self, language):
         self.langauge = language
-                
+        
     # Find optimal path using A* search
     def search(self, env):
         path = None
@@ -30,7 +31,13 @@ class Speaker:
         obstacles = np.array([obstacle.state.p_pos for obstacle in obstacles])
         return np.array(path), obstacles, backup
     
+    # TODO: Figure out efficient way to get directions as opposed to linearly traversing path
     def direct(self, path, obstacles):
-        directions = self.planner(language, path, obstacles)
+        directions = []
+        for pos in path:
+            pos = Point(pos)
+            region = None
+            if region != direction[-1]:
+                directions.append(region)
         return directions
 

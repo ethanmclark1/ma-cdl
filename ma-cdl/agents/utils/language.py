@@ -2,16 +2,15 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 
+from scipy import optimize
 from itertools import product
-from scipy.optimize import minimize
 from statistics import mean, variance
-from shapely.ops import polygonize, split
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 class Language:
     def __init__(self, args):
         corners = list(product((1, -1), repeat=2))
-        self.configs_to_consider = 10
+        self.configs_to_consider = 30
         self.num_obstacles = args.num_obstacles
         self.num_languages = args.num_languages
         self.obs_area = (math.pi*args.obstacle_size) ** 2
@@ -30,10 +29,6 @@ class Language:
             intersection = self.square.intersection(line)
             if not intersection.is_empty and np.any(np.abs([*intersection.coords]) == 1, axis=1).all():
                 valid_lines.append(intersection)
-                plt.plot(*intersection.xy)
-
-        plt.plot(*self.square.exterior.xy)
-        plt.show()
         
         return valid_lines        
             
@@ -43,8 +38,9 @@ class Language:
         lines = MultiLineString(valid_lines)
         lines = lines.buffer(0.000000000001)
         boundary = lines.convex_hull
-        multipolygons = boundary.difference(lines)
-        regions = [multipolygons.geoms[i] for i in range(len(multipolygons.geoms))]
+        polygons = boundary.difference(lines)
+        regions = [polygons] if polygons.geom_type == 'Polygon' else \
+            [polygons.geoms[i] for i in range(len(polygons.geoms))]
         return regions
 
     """ 
@@ -75,32 +71,39 @@ class Language:
         
         collision_mu = mean(collision_prob)
         collision_var = variance(collision_prob)
-        navigable_mu = mean(nonnavigable)
-        navigable_var = variance(nonnavigable)
-        region_var = variance([region.area for region in regions])
+        nonnavigable_mu = mean(nonnavigable)
+        nonnavigable_var = variance(nonnavigable)
+        region_var = 0 if len(regions) == 1 else variance([region.area for region in regions])
         # TODO: Linear combination of cost function
-        cost = collision_mu + collision_var + navigable_mu + navigable_var
+        cost = collision_mu + collision_var + nonnavigable_mu + nonnavigable_var + region_var
         return cost
 
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_lines(self):
         bounds = (-3, 3)
-        optim_val, optim_coeffs = math.inf, None
+        optim_val, optim_lines = math.inf, None
         for num in range(2, self.num_languages+2):
-            # TODO: Add num back into x0 [np.random.rand(num, 4)]
-            x0 = (bounds[1] - bounds[0])*np.random.rand(5, 4)+bounds[0]
-            res = minimize(self._optimizer, x0, method='nelder-mead',
-                           options={'xatol': 1e-8})
-
+            print(f'\nGenerating a language using {num} lines...')
+            x0 = (bounds[1] - bounds[0])*np.random.rand(num, 4)+bounds[0]
+            res = optimize.minimize(self._optimizer, x0, method='nelder-mead',
+                                    options={'xatol': 1e-8})
+            print(f'Optimal cost: {res.fun}')
             if optim_val > res.fun:
                 optim_val = res.fun
-                optim_coeffs = res.x
+                optim_lines = res.x
 
-        optim_coeffs = np.reshape(optim_coeffs, (-1, 4))
-        return optim_coeffs
+        optim_lines = np.reshape(optim_lines, (-1, 4))
+        return optim_lines
+    
+    # Visualize regions that define the language
+    def _visualize(self, regions):
+        [plt.plot(*region.exterior.xy) for region in regions]
+        plt.show()
     
     # Returns regions that define the language
     def create(self):
         lines = self._generate_optimal_lines()
+        lines = [LineString([line[0:2], line[2:4]]) for line in lines]
         regions = self._create_regions(lines)
+        self._visualize(regions)
         return regions

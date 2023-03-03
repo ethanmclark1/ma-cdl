@@ -9,7 +9,7 @@ class Listener():
     def set_language(self, language):
         self.language = language
     
-    def take_action(self, obs, directions):
+    def get_action(self, obs, directions):
         a=3
         
     

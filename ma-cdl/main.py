@@ -19,11 +19,15 @@ class MA_CDL():
         self.speaker = Speaker()
         self.listener = Listener()
         self.language = Language(args)
+    
+    # Passes language to both speaker and listener
+    def _set_langauge(self, language):
+        self.speaker.set_language(language)
+        self.listener.set_language(language)
 
     def act(self):   
         language = self.language.create()
-        self.speaker.set_language(language)
-        self.listener.set_language(language)
+        self._set_langauge(language)
         path, obstacles, backup = self.speaker.search(self.env)
         # Reset environment to initial state
         self.env.unwrapped.steps = 0
@@ -32,7 +36,7 @@ class MA_CDL():
         directions = self.speaker.direct(path, obstacles)
         obs, _, termination, truncation, _ = self.env.last()
         while not (termination or truncation):
-            action = self.listener.take_action(obs, directions)
+            action = self.listener.get_action(obs, directions)
             self.env.step(action)
             obs, _, termination, truncation, _ = self.env.last()
         

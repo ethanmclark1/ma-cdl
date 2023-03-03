@@ -2,7 +2,7 @@ import copy
 import numpy as np
 
 from math import inf
-from shapely.geometry import Point
+from shapely import points
 from agents.utils.search import astar
 
 class Speaker:
@@ -34,8 +34,8 @@ class Speaker:
     # TODO: Figure out efficient way to get directions as opposed to linearly traversing path
     def direct(self, path, obstacles):
         directions = []
+        path = points(path)
         for pos in path:
-            pos = Point(pos)
             region = None
             if region != direction[-1]:
                 directions.append(region)

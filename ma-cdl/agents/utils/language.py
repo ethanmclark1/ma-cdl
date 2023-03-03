@@ -6,7 +6,7 @@ from itertools import product
 from scipy.optimize import minimize
 from statistics import mean, variance
 from shapely.ops import polygonize, split
-from shapely.geometry import Point, LineString, Polygon
+from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 class Language:
     def __init__(self, args):
@@ -14,7 +14,7 @@ class Language:
         self.configs_to_consider = 10
         self.num_obstacles = args.num_obstacles
         self.num_languages = args.num_languages
-        self.obs_area = (math.pi*args.obstacle_radius) ** 2
+        self.obs_area = (math.pi*args.obstacle_size) ** 2
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
                            LineString([corners[2], corners[3]]),
@@ -23,42 +23,49 @@ class Language:
     
     # Split lines that intersect with each other
     def _split_lines(self, lines, idx=0):
-        if idx == len(lines):
-            return lines
+        lines = MultiLineString(lines)
+        lines = lines.buffer(0.000000000001)
+        boundary = lines.convex_hull
+        multipolygons = boundary.difference(lines)
+        print(len(multipolygons.geoms))
+        a=3
+        # if idx == len(lines):
+        #     return lines
 
-        split_lines, garbage_lines = [], []
-        line_0 = lines[idx]
-        for line_1 in lines:
-            try:
-                result = split(line_0, line_1)
-                split_lines.extend([*result.geoms])
-                if len(result.geoms) == 2:
-                    garbage_line = line_0 if line_0 in self.boundaries else line_1
-                    garbage_lines.append(garbage_line)
-            except ValueError:
-                if line_0 == line_1:
-                    continue
-                
-                if line_0.contains(line_1):
-                    garbage_lines.append(line_0)
-                    difference = line_0.difference(line_1)
-                    split_lines.append(difference)
-                elif line_1.contains(line_0):
-                    garbage_lines.append(line_1)
-                    difference = line_1.difference(line_0)
-                    split_lines.append(difference)
-                # TODO: Lines are parallel, but neither consumes the other
-                else:
-                    a=3
+        # split_lines, garbage_lines = [], []
+        # line_0 = lines[idx]
+        # for line_1 in lines:
+        #     try:
+        #         result = split(line_0, line_1)
+        #         split_lines.extend([*result.geoms])
+        #         if len(result.geoms) == 2:
+        #             garbage_line = line_0 if line_0 in self.boundaries else line_1
+        #             garbage_lines.append(garbage_line)
+        #     except ValueError:
+        #         if line_0 == line_1:
+        #             continue
+        #         contains_0 = line_0.contains(line_1)
+        #         contains_1 = line_1.contains(line_0)
+        #         crosses = line_0.crosses(line_1)
+        #         if contains_0 or contains_1:
+        #             consumer, consumed = (line_0, line_1) if contains_0 else (line_1, line_0)
+        #             difference = consumer.difference(consumed)
+        #             split_lines.append(difference)
+        #             garbage_lines.append(consumer)
+        #         elif not crosses:
+        #             intersection = line_0.intersection(line_1)
+        #             split_lines.append(intersection)
+        #         else:
+        #             a=3
         
-        split_lines = list(dict.fromkeys(split_lines))
-        garbage_lines = list(dict.fromkeys(garbage_lines))
-        split_lines = [line for line in split_lines if line not in lines]
-        lines[idx:idx] = split_lines
-        lines = [line for line in lines if line not in garbage_lines]
-        idx += 1 if not garbage_lines else 0
-        lines = self._split_lines(lines, idx)
-        return lines
+        # split_lines = list(dict.fromkeys(split_lines))
+        # garbage_lines = list(dict.fromkeys(garbage_lines))
+        # split_lines = [line for line in split_lines if line not in lines]
+        # lines[idx:idx] = split_lines
+        # lines = [line for line in lines if line not in garbage_lines]
+        # idx += 1 if not garbage_lines else 0
+        # lines = self._split_lines(lines, idx)
+        # return lines
             
     # Both endpoints must be on an environment boundary to be considered valid
     def _get_valid_lines(self, lines):

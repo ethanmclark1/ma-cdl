@@ -21,7 +21,7 @@ class MA_CDL():
         self.language = Language(args)
 
     def act(self):   
-        language = self.langauge.create()
+        language = self.language.create()
         self.speaker.set_language(language)
         self.listener.set_language(language)
         path, obstacles, backup = self.speaker.search(self.env)

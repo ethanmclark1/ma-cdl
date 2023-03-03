@@ -36,19 +36,14 @@ class Language:
         plt.show()
         
         return valid_lines        
-    
-    # Split lines that intersect with each other
-    def _split_lines(self, lines, idx=0):
-        lines = MultiLineString(lines)
-        lines = lines.buffer(0.000000000001)
-        boundary = lines.convex_hull
-        multipolygons = boundary.difference(lines)
-        return multipolygons
             
     # Create polygonal regions from lines
     def _create_regions(self, lines):
         valid_lines = self._get_valid_lines(lines)
-        multipolygons = self._split_lines(valid_lines)
+        lines = MultiLineString(valid_lines)
+        lines = lines.buffer(0.000000000001)
+        boundary = lines.convex_hull
+        multipolygons = boundary.difference(lines)
         regions = [multipolygons.geoms[i] for i in range(len(multipolygons.geoms))]
         return regions
 
@@ -87,8 +82,8 @@ class Language:
         cost = collision_mu + collision_var + navigable_mu + navigable_var
         return cost
 
-    # Minimizes cost function to generate lines
-    def _generate_lines(self):
+    # Minimizes cost function to generate the optimal lines
+    def _generate_optimal_lines(self):
         bounds = (-3, 3)
         optim_val, optim_coeffs = math.inf, None
         for num in range(2, self.num_languages+2):
@@ -106,6 +101,6 @@ class Language:
     
     # Returns regions that define the language
     def create(self):
-        lines = self._generate_lines()
+        lines = self._generate_optimal_lines()
         regions = self._create_regions(lines)
         return regions

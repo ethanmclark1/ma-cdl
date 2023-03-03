@@ -21,52 +21,6 @@ class Language:
                            LineString([corners[3], corners[1]]),
                            LineString([corners[1], corners[0]])]
     
-    # Split lines that intersect with each other
-    def _split_lines(self, lines, idx=0):
-        lines = MultiLineString(lines)
-        lines = lines.buffer(0.000000000001)
-        boundary = lines.convex_hull
-        multipolygons = boundary.difference(lines)
-        print(len(multipolygons.geoms))
-        a=3
-        # if idx == len(lines):
-        #     return lines
-
-        # split_lines, garbage_lines = [], []
-        # line_0 = lines[idx]
-        # for line_1 in lines:
-        #     try:
-        #         result = split(line_0, line_1)
-        #         split_lines.extend([*result.geoms])
-        #         if len(result.geoms) == 2:
-        #             garbage_line = line_0 if line_0 in self.boundaries else line_1
-        #             garbage_lines.append(garbage_line)
-        #     except ValueError:
-        #         if line_0 == line_1:
-        #             continue
-        #         contains_0 = line_0.contains(line_1)
-        #         contains_1 = line_1.contains(line_0)
-        #         crosses = line_0.crosses(line_1)
-        #         if contains_0 or contains_1:
-        #             consumer, consumed = (line_0, line_1) if contains_0 else (line_1, line_0)
-        #             difference = consumer.difference(consumed)
-        #             split_lines.append(difference)
-        #             garbage_lines.append(consumer)
-        #         elif not crosses:
-        #             intersection = line_0.intersection(line_1)
-        #             split_lines.append(intersection)
-        #         else:
-        #             a=3
-        
-        # split_lines = list(dict.fromkeys(split_lines))
-        # garbage_lines = list(dict.fromkeys(garbage_lines))
-        # split_lines = [line for line in split_lines if line not in lines]
-        # lines[idx:idx] = split_lines
-        # lines = [line for line in lines if line not in garbage_lines]
-        # idx += 1 if not garbage_lines else 0
-        # lines = self._split_lines(lines, idx)
-        # return lines
-            
     # Both endpoints must be on an environment boundary to be considered valid
     def _get_valid_lines(self, lines):
         valid_lines = [*self.boundaries]
@@ -82,13 +36,20 @@ class Language:
         plt.show()
         
         return valid_lines        
+    
+    # Split lines that intersect with each other
+    def _split_lines(self, lines, idx=0):
+        lines = MultiLineString(lines)
+        lines = lines.buffer(0.000000000001)
+        boundary = lines.convex_hull
+        multipolygons = boundary.difference(lines)
+        return multipolygons
             
     # Create polygonal regions from lines
     def _create_regions(self, lines):
         valid_lines = self._get_valid_lines(lines)
-        split_lines = self._split_lines(valid_lines)
-        regions = list(polygonize(split_lines))
-        print(len(regions))
+        multipolygons = self._split_lines(valid_lines)
+        regions = [multipolygons.geoms[i] for i in range(len(multipolygons.geoms))]
         return regions
 
     """ 

@@ -21,22 +21,30 @@ class MA_CDL():
         self.language = Language(args)
     
     # Passes language to both speaker and listener
-    def _set_langauge(self, language):
+    def _set_langauge(self):
+        language = self.language.create()
         self.speaker.set_language(language)
         self.listener.set_language(language)
+        
+    def _get_init_conditions(self):
+        world = self.env.unwrapped.world
+        start_pos = world.agents[0].state.p_pos
+        goal_pos = world.agents[0].goal.state.p_pos
+        obstacles = copy.copy(world.landmarks)
+        obstacles.remove(world.agents[0].goal)
+        obstacles = np.array([obstacle.state.p_pos for obstacle in obstacles])
+        return start_pos, goal_pos, obstacles
 
     def act(self):   
-        language = self.language.create()
-        self._set_langauge(language)
-        path, obstacles, backup = self.speaker.search(self.env)
-        # Reset environment to initial state
-        self.env.unwrapped.steps = 0
-        self.env.unwrapped.world = backup
+        self.env.reset()
+        self._set_langauge()
         
-        directions = self.speaker.direct(path, obstacles)
+        start, goal, obstacles = self._get_init_conditions()
+        directions = self.speaker.direct(start, goal, obstacles)
         obs, _, termination, truncation, _ = self.env.last()
+        
         while not (termination or truncation):
-            action = self.listener.get_action(obs, directions)
+            action = self.listener.get_action(obs, goal, directions)
             self.env.step(action)
             obs, _, termination, truncation, _ = self.env.last()
         

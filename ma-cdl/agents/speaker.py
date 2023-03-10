@@ -3,41 +3,63 @@ import numpy as np
 
 from math import inf
 from shapely import points
+from itertools import product
 from agents.utils.search import astar
+from shapely.geometry import Polygon
 
 class Speaker:
     def __init__(self):
-        self.langauge = None
+        self.language = None
     
     def set_language(self, language):
-        self.langauge = language
-        
-    # Find optimal path using A* search
-    def search(self, env):
-        path = None
-        while not path:
-            env.reset()
-            max_cycles = env.unwrapped.max_cycles
-            world = env.unwrapped.world
-            backup = copy.deepcopy(world)
-            listener = world.agents[0]
-            goal = listener.goal
-            obstacles = copy.copy(world.landmarks)
-            obstacles.remove(goal)
-            env.unwrapped.max_cycles = inf
-            path = astar(listener, goal, obstacles, env)
-            
-        env.unwrapped.max_cycles = max_cycles
-        obstacles = np.array([obstacle.state.p_pos for obstacle in obstacles])
-        return np.array(path), obstacles, backup
+        self.language = language
     
-    # TODO: Figure out efficient way to get directions as opposed to linearly traversing path
-    def direct(self, path, obstacles):
+    # Find region containing point
+    def _localize(self, pos):
+        for region in self.language:
+            if region.contains(pos):
+                return region
+    
+    # Get neighboring regions
+    def _get_neighbors(self, cur_region):
+        neighbors = []
+        for region in self.language:
+            if cur_region.dwithin(region, 1e-10):
+                neighbors.append(region)
+        return neighbors
+    
+    # Find optimal next region
+    def _get_next_region(self, cur_region, goal_region, obstacles):
+        neighbor_info = {}
+        obstacles = points(obstacles)
+        neighbors = self._get_neighbors(cur_region)
+        dist_to_goal = cur_region.centroid.distance(goal_region.centroid)
+        for neighbor in neighbors:
+            # Check if neighbor is goal region
+            if neighbor.equals(goal_region):
+                next_region = neighbor
+                break
+            else:
+                # A* search to find distance to goal barring obstacles
+                g = cur_region.centroid.distance(neighbor.centroid)
+                h = neighbor.centroid.distance(goal_region.centroid)
+                f = g + h
+                neighbor_info[neighbor] = NeighborInfo(f, obstacles)
+                
+        return next_region
+        
+    # Gather directions based on path and obstacles
+    def direct(self, start, goal, obstacles):
         directions = []
-        path = points(path)
-        for pos in path:
-            region = None
-            if region != direction[-1]:
-                directions.append(region)
+        start, goal = points(start, goal)
+        cur_region = self._localize(start)
+        goal_region = self._localize(goal)
+        directions.append(cur_region)
+        
+        while not cur_region.equals(goal_region):
+            next_region = self._get_next_region(cur_region, goal_region, obstacles)
+            directions.append(next_region)
+            cur_region = next_region
+            
         return directions
-
+        

@@ -1,4 +1,5 @@
 import math
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -6,6 +7,8 @@ from scipy import optimize
 from itertools import product
 from statistics import mean, variance
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
+
+warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
 
 class Language:
     def __init__(self, args):
@@ -36,7 +39,7 @@ class Language:
     def _create_regions(self, lines):
         valid_lines = self._get_valid_lines(lines)
         lines = MultiLineString(valid_lines)
-        lines = lines.buffer(0.000000000001)
+        lines = lines.buffer(distance=1e-12)
         boundary = lines.convex_hull
         polygons = boundary.difference(lines)
         regions = [polygons] if polygons.geom_type == 'Polygon' else \
@@ -74,8 +77,7 @@ class Language:
         nonnavigable_mu = mean(nonnavigable)
         nonnavigable_var = variance(nonnavigable)
         region_var = 0 if len(regions) == 1 else variance([region.area for region in regions])
-        # TODO: Linear combination of cost function
-        cost = collision_mu + collision_var + nonnavigable_mu + nonnavigable_var + region_var
+        cost = 0.225*collision_mu + 0.175*collision_var + 0.275*nonnavigable_mu + 0.175*nonnavigable_var + 0.15*region_var
         return cost
 
     # Minimizes cost function to generate the optimal lines
@@ -83,11 +85,10 @@ class Language:
         bounds = (-3, 3)
         optim_val, optim_lines = math.inf, None
         for num in range(2, self.num_languages+2):
-            print(f'\nGenerating a language using {num} lines...')
             x0 = (bounds[1] - bounds[0])*np.random.rand(num, 4)+bounds[0]
-            res = optimize.minimize(self._optimizer, x0, method='nelder-mead',
-                                    options={'xatol': 1e-8})
-            print(f'Optimal cost: {res.fun}')
+            res = optimize.minimize(self._optimizer, x0, method='powell',
+                                    options={'maxiter': 500})
+            
             if optim_val > res.fun:
                 optim_val = res.fun
                 optim_lines = res.x
@@ -97,7 +98,7 @@ class Language:
     
     # Visualize regions that define the language
     def _visualize(self, regions):
-        [plt.plot(*region.exterior.xy) for region in regions]
+        [plt.fill(*region.exterior.xy) for region in regions]
         plt.show()
     
     # Returns regions that define the language

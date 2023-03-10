@@ -2,10 +2,8 @@ import copy
 import numpy as np
 
 from math import inf
-from shapely import points
 from itertools import product
-from agents.utils.search import astar
-from shapely.geometry import Polygon
+from shapely import points, Polygon
 
 class Speaker:
     def __init__(self):
@@ -24,7 +22,7 @@ class Speaker:
     def _get_neighbors(self, cur_region):
         neighbors = []
         for region in self.language:
-            if cur_region.dwithin(region, 1e-10):
+            if not cur_region.equals_exact(region, 0) and cur_region.dwithin(region, 1e-10):
                 neighbors.append(region)
         return neighbors
     

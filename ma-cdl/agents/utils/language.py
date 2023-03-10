@@ -98,7 +98,9 @@ class Language:
     
     # Visualize regions that define the language
     def _visualize(self, regions):
-        [plt.fill(*region.exterior.xy) for region in regions]
+        for idx, region in enumerate(regions):
+            plt.fill(*region.exterior.xy)
+            plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
         plt.show()
     
     # Returns regions that define the language

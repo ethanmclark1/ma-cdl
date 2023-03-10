@@ -101,7 +101,7 @@ class Language:
         for idx, region in enumerate(regions):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        plt.show()
+        plt.savefig('regions.png')
     
     # Returns regions that define the language
     def create(self):

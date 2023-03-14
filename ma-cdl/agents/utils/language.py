@@ -1,4 +1,5 @@
 import math
+import time
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ import matplotlib.pyplot as plt
 from scipy import optimize
 from itertools import product
 from statistics import mean, variance
+from sklearn.preprocessing import MinMaxScaler
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -13,6 +15,7 @@ warnings.filterwarnings('ignore', message='invalid value encountered in intersec
 class Language:
     def __init__(self, args):
         corners = list(product((1, -1), repeat=2))
+        self.scaler = MinMaxScaler()
         self.configs_to_consider = 30
         self.num_obstacles = args.num_obstacles
         self.num_languages = args.num_languages
@@ -51,48 +54,58 @@ class Language:
         1. Mean and variance of collision probability
         2. Mean and variance of non-navigable area
         3. Variance of region area 
+        4. Language efficiency
     """
     def _optimizer(self, lines):
         lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])]) 
                  for i in range(0, len(lines), 4)]
         regions = self._create_regions(lines)
+        if len(regions) == 0: return math.inf
         
-        collision_prob, nonnavigable = [], []
+        collision, unsafe = [], []
         # Obstacle(s) are constrained to be in the top right quadrant
         for _ in range(self.configs_to_consider):
-            region_prob, obs_prob, unsafe = 0, 0, 0
+            p_obs, p_region, p_obs_and_region = 0, 0, 0
+            conditional_prob, nonnavigable = 0, 0
             obs_pos = np.random.rand(self.num_obstacles, 2)
             obs_list = [Point(obs_pos[i]) for i in range(self.num_obstacles)]
             
             for obs, region in product(obs_list, regions):
                 if region.contains(obs):
-                    region_prob += (region.area / self.square.area)
-                    obs_prob += (self.obs_area / region.area)
-                    unsafe += region.area
-            collision_prob.append(obs_prob / region_prob)
-            nonnavigable.append(unsafe)
+                    p_obs += (self.obs_area / self.square.area)
+                    p_region += (region.area / self.square.area)
+                    p_obs_and_region += (p_obs * p_region)
+                    conditional_prob += (p_obs_and_region / p_region)
+                    nonnavigable += region.area
+            collision.append(conditional_prob)
+            unsafe.append(nonnavigable)
         
-        collision_mu = mean(collision_prob)
-        collision_var = variance(collision_prob)
-        nonnavigable_mu = mean(nonnavigable)
-        nonnavigable_var = variance(nonnavigable)
+        collision_mu = mean(collision)
+        collision_var = variance(collision)
+        unsafe_mu = mean(unsafe)
+        unsafe_var = variance(unsafe)
         region_var = 0 if len(regions) == 1 else variance([region.area for region in regions])
-        cost = 0.225*collision_mu + 0.175*collision_var + 0.275*nonnavigable_mu + 0.175*nonnavigable_var + 0.15*region_var
+        efficiency = len(regions)
+        
+        criterion = np.array([collision_mu, collision_var, unsafe_mu, unsafe_var, region_var, efficiency])
+        criterion = self.scaler.fit_transform(criterion.reshape(-1, 1)).flatten()
+        weights = np.array((9, 8, 11, 8, 7, 1))
+        cost = np.sum(criterion * weights)
         return cost
 
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_lines(self):
-        bounds = (-3, 3)
+        lb, ub = -2, 2
         optim_val, optim_lines = math.inf, None
         for num in range(2, self.num_languages+2):
-            x0 = (bounds[1] - bounds[0])*np.random.rand(num, 4)+bounds[0]
-            res = optimize.minimize(self._optimizer, x0, method='powell',
-                                    options={'maxiter': 500})
-            
+            print(f'Generating language with {num} lines...')
+            bounds = [(lb, ub) for _ in range(num*4)]
+            res = optimize.differential_evolution(self._optimizer, bounds)
+            print(res.message, res.fun)
             if optim_val > res.fun:
                 optim_val = res.fun
                 optim_lines = res.x
-
+        
         optim_lines = np.reshape(optim_lines, (-1, 4))
         return optim_lines
     

@@ -7,8 +7,6 @@ import pygame
 from gymnasium import spaces
 from gymnasium.utils import seeding
 
-from agents.utils.search import check_collision
-
 from pettingzoo import AECEnv
 from pettingzoo.mpe._mpe_utils.core import Agent
 from pettingzoo.utils import wrappers

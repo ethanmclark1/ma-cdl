@@ -13,6 +13,7 @@ class Speaker(BaseAgent):
     # Get info on neighboring regions
     def _find_neighbors(self, cur_region, goal_region, obstacles):
         neighbors = {}
+        obstacles = points(obstacles)
         cur_region = self.language[cur_region]
         goal_region = self.language[goal_region]
         for neighbor in self.language:
@@ -28,11 +29,10 @@ class Speaker(BaseAgent):
         return neighbors
     
     # Find optimal next region
-    def _get_next_region(self, prev_region, cur_region, goal_region, obstacles):
+    def _get_next_region(self, prev_region, neighbors):
         min_f = inf
         next_region = None
-        obstacles = points(obstacles)
-        neighbors = self._find_neighbors(cur_region, goal_region, obstacles)
+        if prev_region in neighbors: del neighbors[prev_region]
         
         for idx, neighbor in neighbors.items():
             if neighbor[0]:
@@ -42,8 +42,9 @@ class Speaker(BaseAgent):
                 min_f = neighbor[2]
                 next_region = idx
         
-        if next_region is None or prev_region == next_region:
-            a=3
+        if next_region is None:
+            f_vals = (neighbors, lambda: neighbors[2])
+            next_region = neighbors[np.argmin(f_vals)]
 
         return next_region
         
@@ -57,13 +58,10 @@ class Speaker(BaseAgent):
         directions.append(cur_region)
         
         while cur_region != goal_region:
-            next_region = self._get_next_region(prev_region, cur_region, goal_region, obstacles)
+            neighbors = self._find_neighbors(cur_region, goal_region, obstacles)
+            next_region = self._get_next_region(prev_region, neighbors)
             directions.append(next_region)
             prev_region = cur_region
             cur_region = next_region
             
         return directions
-    
-
-        
-        

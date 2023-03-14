@@ -44,7 +44,8 @@ class MA_CDL():
         obs, _, termination, truncation, _ = self.env.last()
         
         while not (termination or truncation):
-            action = self.listener.get_action(obs, goal, directions)
+            backup = copy.deepcopy(self.env.unwrapped.world)
+            action = self.listener.get_action(obs, goal, directions, self.env)
             self.env.step(action)
             obs, _, termination, truncation, _ = self.env.last()
         

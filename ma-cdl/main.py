@@ -44,10 +44,11 @@ class MA_CDL():
         obs, _, termination, truncation, _ = self.env.last()
         
         while not (termination or truncation):
-            backup = copy.deepcopy(self.env.unwrapped.world)
             action = self.listener.get_action(obs, goal, directions, self.env)
             self.env.step(action)
             obs, _, termination, truncation, _ = self.env.last()
+            
+        print('Success!' if termination else 'Failure!')
         
 if __name__ == '__main__':
     args = get_arguments()

@@ -89,7 +89,7 @@ class Language:
         
         criterion = np.array([collision_mu, collision_var, unsafe_mu, unsafe_var, region_var, efficiency])
         criterion = self.scaler.fit_transform(criterion.reshape(-1, 1)).flatten()
-        weights = np.array((9, 8, 10, 8, 10, 12))
+        weights = np.array((9, 20, 16, 8, 20, 17))
         cost = np.sum(criterion * weights)
         return cost
 
@@ -98,7 +98,7 @@ class Language:
         lb, ub = -2, 2
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, self.num_languages+2):
+        for num in range(2, 3):
             print(f'Generating language with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
             res = optimize.differential_evolution(self._optimizer, bounds)

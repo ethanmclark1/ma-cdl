@@ -248,20 +248,21 @@ class SimpleEnv(AECEnv):
 
         self.current_actions[current_idx] = action
         agent_size = self.world.agents[0].size
-        goal_size = self.world.agents[0].goal.size
-        min_dist = agent_size / 2 + goal_size / 2
-        dist = np.linalg.norm(
+        landmark_size = self.world.agents[0].goal.size
+        min_dist = agent_size / 2 + landmark_size / 2
+        goal_dist = np.linalg.norm(
             self.world.agents[0].state.p_pos -
             self.world.agents[0].goal.state.p_pos
         )
+        landmark_dist = [np.linalg.norm(self.world.agents[0].state.p_pos - landmark.state.p_pos) 
+                          for landmark in self.world.landmarks[1:]]
 
         if next_idx == 0:
             self._execute_world_step()
             self.steps += 1
-            if self.steps >= self.max_cycles:
-                for a in self.agents:
-                    self.truncations[a] = True
-            if min_dist >= dist:
+            if self.steps >= self.max_cycles or min(landmark_dist) <= min_dist:
+                self.terminations[self.agent_selection] = True
+            if min_dist >= goal_dist:
                 self.terminations[self.agent_selection] = True
         else:
             self._clear_rewards()

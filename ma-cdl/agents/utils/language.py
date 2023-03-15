@@ -89,7 +89,7 @@ class Language:
         
         criterion = np.array([collision_mu, collision_var, unsafe_mu, unsafe_var, region_var, efficiency])
         criterion = self.scaler.fit_transform(criterion.reshape(-1, 1)).flatten()
-        weights = np.array((9, 8, 11, 8, 7, 1))
+        weights = np.array((9, 8, 10, 8, 10, 12))
         cost = np.sum(criterion * weights)
         return cost
 
@@ -97,6 +97,7 @@ class Language:
     def _generate_optimal_lines(self):
         lb, ub = -2, 2
         optim_val, optim_lines = math.inf, None
+        start = time.time()
         for num in range(2, self.num_languages+2):
             print(f'Generating language with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
@@ -106,6 +107,8 @@ class Language:
                 optim_val = res.fun
                 optim_lines = res.x
         
+        end = time.time()
+        print(f'Optimization time: {end-start:.2f} seconds')
         optim_lines = np.reshape(optim_lines, (-1, 4))
         return optim_lines
     

@@ -12,22 +12,27 @@ class Listener(BaseAgent):
     def get_action(self, obs, goal, directions, env):
         min_dist = inf
         actions = np.arange(0, 5)
-        backup = copy.deepcopy(env)
+        world = env.unwrapped.world
         obs, goal = Point(obs[0:2], goal)
         obs_region = self.localize(obs)
         goal_region = self.localize(goal)
-        directions = directions[directions.index(obs_region):]
+        
+        if obs_region == goal_region:
+            target = goal
+        else:
+            idx = directions[directions.index(obs)+1:][0]
+            region = self.language[neighbor_idx]
+            target = region.centroid
         
         for action in actions:
             env.step(action)
             obs, _, _, _, _ = env.last()
-            obs = obs[0:2]
-            obs_point = Point(obs)
-            dist = np.linalg.norm(obs - goal) if obs_region == goal_region else inf
-            if dist < min_dist:
+            obs = Point(obs[0:2])
+            dist = obs.distance(target)
+            if dist <= min_dist:
                 min_dist = dist
                 optimal_action = action
-            env = backup
+            env.unwrapped.world = world
         
         return optimal_action
             

@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 from scipy import optimize
 from itertools import product
 from statistics import mean, variance
-from sklearn.preprocessing import MinMaxScaler
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -15,7 +14,6 @@ warnings.filterwarnings('ignore', message='invalid value encountered in intersec
 class Language:
     def __init__(self, args):
         corners = list(product((1, -1), repeat=2))
-        self.scaler = MinMaxScaler()
         self.configs_to_consider = 30
         self.num_obstacles = args.num_obstacles
         self.num_languages = args.num_languages
@@ -88,21 +86,19 @@ class Language:
         efficiency = len(regions)
         
         criterion = np.array([collision_mu, collision_var, unsafe_mu, unsafe_var, region_var, efficiency])
-        criterion = self.scaler.fit_transform(criterion.reshape(-1, 1)).flatten()
-        weights = np.array((9, 20, 16, 8, 20, 17))
+        weights = np.array((15, 17, 9, 18, 10, 2))
         cost = np.sum(criterion * weights)
         return cost
 
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_lines(self):
-        lb, ub = -2, 2
+        lb, ub = -1.25, 1.25
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, 3):
-            print(f'Generating language with {num} lines...')
+        for num in range(2, self.num_languages+2):
             bounds = [(lb, ub) for _ in range(num*4)]
-            res = optimize.differential_evolution(self._optimizer, bounds)
-            print(res.message, res.fun)
+            res = optimize.differential_evolution(self._optimizer, bounds,
+                                                  init='sobol')
             if optim_val > res.fun:
                 optim_val = res.fun
                 optim_lines = res.x

@@ -9,16 +9,11 @@ from agents.listener import Listener
 from agents.utils.language import Language
 
 class MA_CDL():
-    def __init__(self, args):
-        self.env = simple_path.env(
-            max_cycles=200, 
-            num_obstacles=args.num_obstacles,
-            obstacle_size=args.obstacle_size,
-            render_mode=args.render_mode
-            )
+    def __init__(self, config):
+        self.env = simple_path.env(config)
+        self.language = Language(config)
         self.speaker = Speaker()
         self.listener = Listener()
-        self.language = Language(args)
     
     # Passes language to both speaker and listener
     def _set_langauge(self):
@@ -51,6 +46,6 @@ class MA_CDL():
         print('Success!' if termination else 'Failure!')
         
 if __name__ == '__main__':
-    args = get_arguments()
-    ma_cdl = MA_CDL(args)
+    config = get_arguments()
+    ma_cdl = MA_CDL(config)
     ma_cdl.act()

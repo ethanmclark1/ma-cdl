@@ -16,8 +16,8 @@ alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def make_env(raw_env):
-    def env(**kwargs):
-        env = raw_env(**kwargs)
+    def env(*args):
+        env = raw_env(*args)
         if env.continuous_actions:
             env = wrappers.ClipOutOfBoundsWrapper(env)
         else:

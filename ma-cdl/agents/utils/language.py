@@ -1,5 +1,6 @@
 import math
 import time
+import random
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,10 +15,12 @@ warnings.filterwarnings('ignore', message='invalid value encountered in intersec
 class Language:
     def __init__(self, args):
         corners = list(product((1, -1), repeat=2))
-        self.configs_to_consider = 30
-        self.num_obstacles = args.num_obstacles
-        self.num_languages = args.num_languages
-        self.obs_area = (math.pi*args.obstacle_size) ** 2
+        self.configs_to_consider = 100
+        self.start_constr = args.start_constr
+        self.goal_constr = args.goal_constr
+        self.obs_constr = args.obs_constr
+        self.num_obstacles = args.num_obs
+        self.obs_area = (math.pi*args.obs_size) ** 2
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
                            LineString([corners[2], corners[3]]),
@@ -49,10 +52,9 @@ class Language:
 
     """ 
     Cost function to minimize:
-        1. Mean and variance of collision probability
-        2. Mean and variance of non-navigable area
-        3. Variance of region area 
-        4. Language efficiency
+        1. Mean and variance of non-navigable area
+        2. Variance of region area 
+        3. Language efficiency
     """
     def _optimizer(self, lines):
         lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])]) 
@@ -60,33 +62,29 @@ class Language:
         regions = self._create_regions(lines)
         if len(regions) == 0: return math.inf
         
-        collision, unsafe = [], []
+        unsafe = []
         # Obstacle(s) are constrained to be in the top right quadrant
         for _ in range(self.configs_to_consider):
-            p_obs, p_region, p_obs_and_region = 0, 0, 0
-            conditional_prob, nonnavigable = 0, 0
-            obs_pos = np.random.rand(self.num_obstacles, 2)
-            obs_list = [Point(obs_pos[i]) for i in range(self.num_obstacles)]
+            nonnavigable = 0
+            start_pos = random.choice(self.start_constr)*np.random.uniform(0, 1, size=(2,))
+            start = Point(start_pos)
+            goal_pos = random.choice(self.goal_constr)*np.random.uniform(0, 1, size=(2,))
+            goal = Point(goal_pos)
+            obs_pos = np.random.uniform(0, 1, size=(self.num_obstacles, 2))
+            obs_list = [Point(random.choice(self.obs_constr)*obs_pos[i]) for i in range(self.num_obstacles)]
             
             for obs, region in product(obs_list, regions):
                 if region.contains(obs):
-                    p_obs += (self.obs_area / self.square.area)
-                    p_region += (region.area / self.square.area)
-                    p_obs_and_region += (p_obs * p_region)
-                    conditional_prob += (p_obs_and_region / p_region)
                     nonnavigable += region.area
-            collision.append(conditional_prob)
             unsafe.append(nonnavigable)
         
-        collision_mu = mean(collision)
-        collision_var = variance(collision)
         unsafe_mu = mean(unsafe)
         unsafe_var = variance(unsafe)
         region_var = 0 if len(regions) == 1 else variance([region.area for region in regions])
         efficiency = len(regions)
         
-        criterion = np.array([collision_mu, collision_var, unsafe_mu, unsafe_var, region_var, efficiency])
-        weights = np.array((15, 17, 9, 18, 10, 2))
+        criterion = np.array([unsafe_mu, unsafe_var, region_var, efficiency])
+        weights = np.array((9, 18, 10, 2))
         cost = np.sum(criterion * weights)
         return cost
 
@@ -95,7 +93,7 @@ class Language:
         lb, ub = -1.25, 1.25
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, self.num_languages+2):
+        for num in range(2, 3):
             bounds = [(lb, ub) for _ in range(num*4)]
             res = optimize.differential_evolution(self._optimizer, bounds,
                                                   init='sobol')

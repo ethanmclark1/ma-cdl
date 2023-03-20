@@ -3,7 +3,7 @@ import numpy as np
 
 from math import inf
 from itertools import product
-from shapely import points, Polygon
+from shapely import Point, Polygon
 from agents.base_aqent import BaseAgent
 
 class Speaker(BaseAgent):
@@ -13,11 +13,11 @@ class Speaker(BaseAgent):
     # Get info on neighboring regions
     def _find_neighbors(self, cur_region, goal_region, obstacles):
         neighbors = {}
-        obstacles = points(obstacles)
+        obstacles = [Point(obstacle) for obstacle in obstacles]
         cur_region = self.language[cur_region]
         goal_region = self.language[goal_region]
         for neighbor in self.language:
-            if not cur_region.equals_exact(neighbor, 0) and cur_region.dwithin(neighbor, 1e-10):
+            if not cur_region.equals_exact(neighbor, 0) and cur_region.dwithin(neighbor, 2e-12):
                 idx = self.language.index(neighbor)
                 g = cur_region.centroid.distance(neighbor.centroid)
                 h = neighbor.centroid.distance(goal_region.centroid)
@@ -52,7 +52,8 @@ class Speaker(BaseAgent):
     def direct(self, start, goal, obstacles):
         directions = []
         prev_region = None
-        start, goal = points(start, goal)
+        start = Point(start)
+        goal = Point(goal)
         cur_region = self.localize(start)
         goal_region = self.localize(goal)
         directions.append(cur_region)

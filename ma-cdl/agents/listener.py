@@ -2,7 +2,7 @@ import copy
 import numpy as np
 
 from math import inf
-from shapely import points as Point
+from shapely import Point
 from agents.base_aqent import BaseAgent
 
 class Listener(BaseAgent):
@@ -11,10 +11,11 @@ class Listener(BaseAgent):
     
     def get_action(self, obs, goal, directions, env):
         min_dist = inf
-        actions = np.arange(0, 5)
+        actions = np.arange(1, 5)
         world = env.unwrapped.world
         backup = copy.deepcopy(world)
-        obs, goal = Point(obs[0:2], goal)
+        obs = Point(obs[0:2])
+        goal =  Point(goal)
         obs_region = self.localize(obs)
         goal_region = self.localize(goal)
         
@@ -30,6 +31,7 @@ class Listener(BaseAgent):
             obs, _, _, _, _ = env.last()
             obs = Point(obs[0:2])
             dist = obs.distance(target)
+            # 1: Left, 2: Right, 3: Down, 4: Up
             if dist <= min_dist:
                 min_dist = dist
                 optimal_action = action

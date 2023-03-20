@@ -1,4 +1,4 @@
-import pdb
+import random
 import numpy as np
 
 from gymnasium.utils import EzPickle
@@ -8,9 +8,13 @@ from environment.utils.simple_env import SimpleEnv, make_env
 
 
 class raw_env(SimpleEnv, EzPickle):
-    def __init__(self, max_cycles=25, num_obstacles=3, obstacle_size=0.02, continuous_actions=False, render_mode=None):
+    # def __init__(self, max_cycles=25, num_obstacles=3, obstacle_size=0.02, continuous_actions=False, render_mode=None):
+    def __init__(self, config):
+        max_cycles = 25
+        continuous_actions = False
+        render_mode = 'human'
         scenario = Scenario()
-        world = scenario.make_world(num_obstacles, obstacle_size)
+        world = scenario.make_world(config)
         super().__init__(
             scenario=scenario, 
             world=world, 
@@ -24,8 +28,8 @@ class raw_env(SimpleEnv, EzPickle):
 env = make_env(raw_env)
 
 class Scenario(BaseScenario):
-    def make_world(self, num_obstacles, obstacle_size):
-        world = World()
+    def make_world(self, config):
+        world = World(config)
         # add agents
         world.agents = [Agent() for i in range(1)]
         for i, agent in enumerate(world.agents):
@@ -34,12 +38,12 @@ class Scenario(BaseScenario):
             agent.silent = True
             agent.size = 0.05
         # add landmarks
-        world.landmarks = [Landmark() for i in range(num_obstacles + 1)]
+        world.landmarks = [Landmark() for i in range(config.num_obs + 1)]
         for i, landmark in enumerate(world.landmarks):
             landmark.name = "landmark %d" % i
             landmark.collide = False
             landmark.movable = False
-            landmark.size = obstacle_size
+            landmark.size = config.obs_size
         return world
 
     def reset_world(self, world, np_random):
@@ -52,12 +56,15 @@ class Scenario(BaseScenario):
         world.agents[0].color = np.array([0.25, 0.25, 0.75])
         world.agents[0].goal.color = np.array([0.25, 0.75, 0.25])
 
-        # set random initial states
-        for agent in world.agents:
-            agent.state.p_pos = np_random.uniform(-1, +1, world.dim_p)
-            agent.state.p_vel = np.zeros(world.dim_p)
-        for i, landmark in enumerate(world.landmarks):
-            landmark.state.p_pos = np_random.uniform(-1, +1, world.dim_p)
+        # start position is constrained to be in bottom-left quadrant
+        world.agents[0].state.p_pos = random.choice(world.start_constr)*np_random.uniform(0, 1, world.dim_p)
+        world.agents[0].state.p_vel = np.zeros(world.dim_p)
+        # goal position is constrained to be in top-left quadrant
+        world.landmarks[0].state.p_pos = random.choice(world.goal_constr)*np_random.uniform(0, 1, world.dim_p)
+        world.landmarks[0].state.p_vel = np.zeros(world.dim_p)
+        # obstacles are constrained to be in top-right quadrant 
+        for landmark in world.landmarks[1:]:
+            landmark.state.p_pos = random.choice(world.obs_constr)*np_random.uniform(0, 1, world.dim_p)
             landmark.state.p_vel = np.zeros(world.dim_p)
 
     # Created custom reward function in Speaker class

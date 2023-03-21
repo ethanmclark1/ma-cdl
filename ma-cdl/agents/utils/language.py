@@ -49,12 +49,29 @@ class Language:
         regions = [polygons] if polygons.geom_type == 'Polygon' else \
             [polygons.geoms[i] for i in range(len(polygons.geoms))]
         return regions
-
+    
+    """
+    Cost function to minimize for current configuration:
+        1. Unsafe area
+        2. Unsafe plans    
+    """
+    def _config_cost(self, start, goal, obstacles, regions):
+        unsafe_area = sum(map(lambda obstacle: regions[obstacle].area, obstacles))
+        
+        if start is obstacles or goal in obstacles:
+            unsafe_plan = True
+        else:
+            a=3        
+        
+        return unsafe_area, unsafe_plan
+        
+        
     """ 
-    Cost function to minimize:
-        1. Mean and variance of non-navigable area
+    Cost function to minimize for entire language (i.e. all configurations):
+        1. Mean and variance of unsafe area
         2. Variance of region area 
-        3. Language efficiency
+        3. Unsafe plans
+        4. Language efficiency
     """
     def _optimizer(self, lines):
         lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])]) 
@@ -62,28 +79,32 @@ class Language:
         regions = self._create_regions(lines)
         if len(regions) == 0: return math.inf
         
-        unsafe = []
+        unsafe_area, unsafe_plan = [], []
         # Obstacle(s) are constrained to be in the top right quadrant
         for _ in range(self.configs_to_consider):
             nonnavigable = 0
-            start_pos = random.choice(self.start_constr)*np.random.uniform(0, 1, size=(2,))
-            start = Point(start_pos)
-            goal_pos = random.choice(self.goal_constr)*np.random.uniform(0, 1, size=(2,))
-            goal = Point(goal_pos)
+            start = Point(random.choice(self.start_constr)*np.random.uniform(0, 1, size=(2,)))
+            goal = Point(random.choice(self.goal_constr)*np.random.uniform(0, 1, size=(2,)))
+            
+            start_region = list(map(lambda region: region.contains(start), regions)).index(True)
+            goal_region = list(map(lambda region: region.contains(start), regions)).index(True)
+            
             obs_pos = np.random.uniform(0, 1, size=(self.num_obstacles, 2))
             obs_list = [Point(random.choice(self.obs_constr)*obs_pos[i]) for i in range(self.num_obstacles)]
+            obs_region = list(set([idx for idx, region in enumerate(regions) 
+                                   for obs in obs_list if region.contains(obs)]))
             
-            for obs, region in product(obs_list, regions):
-                if region.contains(obs):
-                    nonnavigable += region.area
-            unsafe.append(nonnavigable)
+            config_safety = self._config_cost(start_region, goal_region, obs_region, regions)
+            unsafe_area += config_safety[0]
+            unsafe_plan += config_safety[1]
         
-        unsafe_mu = mean(unsafe)
-        unsafe_var = variance(unsafe)
+        unsafe_mu = mean(unsafe_area)
+        unsafe_var = variance(unsafe_plan)
         region_var = 0 if len(regions) == 1 else variance([region.area for region in regions])
+        unsafe_plan = sum(unsafe_plan)
         efficiency = len(regions)
         
-        criterion = np.array([unsafe_mu, unsafe_var, region_var, efficiency])
+        criterion = np.array([unsafe_mu, unsafe_var, region_var, unsafe_plan, efficiency])
         weights = np.array((9, 18, 10, 2))
         cost = np.sum(criterion * weights)
         return cost

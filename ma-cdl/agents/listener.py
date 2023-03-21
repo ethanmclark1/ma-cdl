@@ -3,7 +3,7 @@ import numpy as np
 
 from math import inf
 from shapely import Point
-from agents.base_aqent import BaseAgent
+from agents.utils.base_aqent import BaseAgent
 
 class Listener(BaseAgent):
     def __init__(self):

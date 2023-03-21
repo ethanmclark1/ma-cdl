@@ -4,7 +4,7 @@ import numpy as np
 from math import inf
 from itertools import product
 from shapely import Point, Polygon
-from agents.base_aqent import BaseAgent
+from agents.utils.base_aqent import BaseAgent
 
 class Speaker(BaseAgent):
     def __init__(self):

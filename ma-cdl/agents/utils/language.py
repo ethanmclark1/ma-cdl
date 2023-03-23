@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 
+from math import pi, inf
 from scipy import optimize
 from itertools import product
 from statistics import mean, variance
@@ -16,11 +17,11 @@ class Language:
     def __init__(self, args):
         corners = list(product((1, -1), repeat=2))
         self.configs_to_consider = 100
-        self.start_constr = args.start_constr
-        self.goal_constr = args.goal_constr
-        self.obs_constr = args.obs_constr
         self.num_obstacles = args.num_obs
-        self.obs_area = (math.pi*args.obs_size) ** 2
+        self.obs_constr = args.obs_constr
+        self.goal_constr = args.goal_constr
+        self.start_constr = args.start_constr
+        self.obs_area = (pi*args.obs_size) ** 2
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
                            LineString([corners[2], corners[3]]),
@@ -30,7 +31,6 @@ class Language:
     # Both endpoints must be on an environment boundary to be considered valid
     def _get_valid_lines(self, lines):
         valid_lines = [*self.boundaries]
-        
         # Get valid lines s.t. both endpoints are on an environment boundary
         for line in lines:
             intersection = self.square.intersection(line)
@@ -50,28 +50,84 @@ class Language:
             [polygons.geoms[i] for i in range(len(polygons.geoms))]
         return regions
     
-    """
-    Cost function to minimize for current configuration:
-        1. Unsafe area
-        2. Unsafe plans    
-    """
-    def _config_cost(self, start, goal, obstacles, regions):
-        unsafe_area = sum(map(lambda obstacle: regions[obstacle].area, obstacles))
+    # Get info on neighboring regions
+    def _find_neighbors(self, cur_idx, goal_idx, obstacles, regions):
+        neighbors = {}
+        cur_region = regions[cur_idx]
+        goal_region = regions[goal_idx]
+        for neighbor in regions:
+            if not cur_region.equals_exact(neighbor, 0) and cur_region.dwithin(neighbor, 2e-12):
+                idx = regions.index(neighbor)
+                g = cur_region.centroid.distance(neighbor.centroid)
+                h = neighbor.centroid.distance(goal_region.centroid)
+                f = g + h
+                is_goal = neighbor.equals(goal_region)
+                is_safe = not any(neighbor.contains(obstacles))
+                neighbors[idx] = (is_goal, is_safe, f)
+
+        return neighbors
+    
+    # Get next region to move to
+    def _get_next_region(self, prev_idx, neighbors):
+        min_f = inf
+        next_idx = None
+        if prev_idx in neighbors: del neighbors[prev_idx]
+
+        for idx, neighbor in neighbors.items():
+            if neighbor[0]:
+                next_idx = idx
+                break
+            elif neighbor[1] and neighbor[2] < min_f:
+                min_f = neighbor[2]
+                next_idx = idx
+
+        return next_idx
+    
+    # Check if there exists a safe path from start to goal
+    def _get_safe_path(self, start_idx, goal_idx, obstacles, regions):
+        safe_path = True
         
-        if start is obstacles or goal in obstacles:
-            unsafe_plan = True
+        prev_idx = None
+        cur_idx = start_idx
+        while cur_idx != goal_idx:
+            neighbors = self._find_neighbors(start_idx, goal_idx, obstacles, regions)
+            next_idx = self._get_next_region(prev_idx, neighbors)
+            if not next_idx:
+                safe_path = False
+                break
+            prev_idx = cur_idx
+            cur_idx = next_idx
+            
+        return safe_path
+    
+    """
+    Calculate cost of a configuration (i.e. start, goal, and obstacles)
+    with respect to the regions and positions under some positional constraints: 
+        1. Unsafe area caused by obstacles
+        2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
+    """
+    def _config_cost(self, start_idx, goal_idx, obstacles, regions):
+        obs_idx = list(set([idx for idx, region in enumerate(regions) 
+                            for obs in obstacles if region.contains(obs)]))
+        nonnavigable = sum([regions[idx].area for idx in obs_idx])
+        
+        if start_idx in obs_idx or goal_idx in obs_idx:
+            unsafe = True
+        elif start_idx == goal_idx:
+            unsafe = False
         else:
-            a=3        
-        
-        return unsafe_area, unsafe_plan
-        
+            safe = self._get_safe_path(start_idx, goal_idx, obstacles, regions)
+            unsafe = not safe
+            
+        return nonnavigable, unsafe
         
     """ 
-    Cost function to minimize for entire language (i.e. all configurations):
-        1. Mean and variance of unsafe area
-        2. Variance of region area 
-        3. Unsafe plans
-        4. Language efficiency
+    Calculate cost of a given problem (i.e. all configurations) 
+    with respect to the regions and the given positional constraints: 
+        1. Unsafe plans
+        2. Language efficiency
+        3. Mean of nonnavigable area
+        4. Variance of nonnavigable area
     """
     def _optimizer(self, lines):
         lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])]) 
@@ -79,42 +135,38 @@ class Language:
         regions = self._create_regions(lines)
         if len(regions) == 0: return math.inf
         
-        unsafe_area, unsafe_plan = [], []
-        # Obstacle(s) are constrained to be in the top right quadrant
+        nonnavigable, unsafe = [], []
         for _ in range(self.configs_to_consider):
-            nonnavigable = 0
             start = Point(random.choice(self.start_constr)*np.random.uniform(0, 1, size=(2,)))
             goal = Point(random.choice(self.goal_constr)*np.random.uniform(0, 1, size=(2,)))
             
-            start_region = list(map(lambda region: region.contains(start), regions)).index(True)
-            goal_region = list(map(lambda region: region.contains(start), regions)).index(True)
+            start_idx = list(map(lambda region: region.contains(start), regions)).index(True)
+            goal_idx = list(map(lambda region: region.contains(goal), regions)).index(True)
             
             obs_pos = np.random.uniform(0, 1, size=(self.num_obstacles, 2))
-            obs_list = [Point(random.choice(self.obs_constr)*obs_pos[i]) for i in range(self.num_obstacles)]
-            obs_region = list(set([idx for idx, region in enumerate(regions) 
-                                   for obs in obs_list if region.contains(obs)]))
+            obstacles = [Point(random.choice(self.obs_constr)*obs_pos[i]) for i in range(self.num_obstacles)]
             
-            config_safety = self._config_cost(start_region, goal_region, obs_region, regions)
-            unsafe_area += config_safety[0]
-            unsafe_plan += config_safety[1]
+            config_cost = self._config_cost(start_idx, goal_idx, obstacles, regions)
+            nonnavigable += [config_cost[0]]
+            unsafe += [config_cost[1]]
         
-        unsafe_mu = mean(unsafe_area)
-        unsafe_var = variance(unsafe_plan)
-        region_var = 0 if len(regions) == 1 else variance([region.area for region in regions])
-        unsafe_plan = sum(unsafe_plan)
+        unsafe = sum(unsafe)
         efficiency = len(regions)
+        nonnavigable_mu = mean(nonnavigable)
+        nonnavigable_var = variance(nonnavigable)
         
-        criterion = np.array([unsafe_mu, unsafe_var, region_var, unsafe_plan, efficiency])
-        weights = np.array((9, 18, 10, 2))
-        cost = np.sum(criterion * weights)
-        return cost
+        criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
+        weights = np.array((1, 3, 15, 25))
+        problem_cost = np.sum(criterion * weights)
+        return problem_cost
 
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_lines(self):
         lb, ub = -1.25, 1.25
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, 3):
+        for num in range(2, 10):
+            print(f'Generating langauge with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
             res = optimize.differential_evolution(self._optimizer, bounds,
                                                   init='sobol')

@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 from math import pi, inf
 from scipy import optimize
 from itertools import product
+from queue import PriorityQueue
 from statistics import mean, variance
+from agents.utils.search import search
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -16,6 +18,7 @@ warnings.filterwarnings('ignore', message='invalid value encountered in intersec
 class Language:
     def __init__(self, args):
         corners = list(product((1, -1), repeat=2))
+        self.name = self.__class__.__name__
         self.configs_to_consider = 100
         self.num_obstacles = args.num_obs
         self.obs_constr = args.obs_constr
@@ -49,57 +52,7 @@ class Language:
         regions = [polygons] if polygons.geom_type == 'Polygon' else \
             [polygons.geoms[i] for i in range(len(polygons.geoms))]
         return regions
-    
-    # Get info on neighboring regions
-    def _find_neighbors(self, cur_idx, goal_idx, obstacles, regions):
-        neighbors = {}
-        cur_region = regions[cur_idx]
-        goal_region = regions[goal_idx]
-        for neighbor in regions:
-            if not cur_region.equals_exact(neighbor, 0) and cur_region.dwithin(neighbor, 2e-12):
-                idx = regions.index(neighbor)
-                g = cur_region.centroid.distance(neighbor.centroid)
-                h = neighbor.centroid.distance(goal_region.centroid)
-                f = g + h
-                is_goal = neighbor.equals(goal_region)
-                is_safe = not any(neighbor.contains(obstacles))
-                neighbors[idx] = (is_goal, is_safe, f)
-
-        return neighbors
-    
-    # Get next region to move to
-    def _get_next_region(self, prev_idx, neighbors):
-        min_f = inf
-        next_idx = None
-        if prev_idx in neighbors: del neighbors[prev_idx]
-
-        for idx, neighbor in neighbors.items():
-            if neighbor[0]:
-                next_idx = idx
-                break
-            elif neighbor[1] and neighbor[2] < min_f:
-                min_f = neighbor[2]
-                next_idx = idx
-
-        return next_idx
-    
-    # Check if there exists a safe path from start to goal
-    def _get_safe_path(self, start_idx, goal_idx, obstacles, regions):
-        safe_path = True
         
-        prev_idx = None
-        cur_idx = start_idx
-        while cur_idx != goal_idx:
-            neighbors = self._find_neighbors(start_idx, goal_idx, obstacles, regions)
-            next_idx = self._get_next_region(prev_idx, neighbors)
-            if not next_idx:
-                safe_path = False
-                break
-            prev_idx = cur_idx
-            cur_idx = next_idx
-            
-        return safe_path
-    
     """
     Calculate cost of a configuration (i.e. start, goal, and obstacles)
     with respect to the regions and positions under some positional constraints: 
@@ -116,8 +69,8 @@ class Language:
         elif start_idx == goal_idx:
             unsafe = False
         else:
-            safe = self._get_safe_path(start_idx, goal_idx, obstacles, regions)
-            unsafe = not safe
+            path = search(start_idx, goal_idx, obstacles, regions, self.name)
+            unsafe = False if path else True
             
         return nonnavigable, unsafe
         
@@ -152,11 +105,12 @@ class Language:
         
         unsafe = sum(unsafe)
         efficiency = len(regions)
+        region_var = 0 if len(regions) == 1 else variance([region.area for region in regions])
         nonnavigable_mu = mean(nonnavigable)
         nonnavigable_var = variance(nonnavigable)
         
-        criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
-        weights = np.array((1, 3, 15, 25))
+        criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var, region_var])
+        weights = np.array((3, 5, 15, 25, 20))
         problem_cost = np.sum(criterion * weights)
         return problem_cost
 
@@ -165,11 +119,11 @@ class Language:
         lb, ub = -1.25, 1.25
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, 10):
+        for num in range(2, 7):
             print(f'Generating langauge with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
-            res = optimize.differential_evolution(self._optimizer, bounds,
-                                                  init='sobol')
+            res = optimize.differential_evolution(self._optimizer, bounds, maxiter=400,
+                                                  init='sobol', disp=True)
             if optim_val > res.fun:
                 optim_val = res.fun
                 optim_lines = res.x

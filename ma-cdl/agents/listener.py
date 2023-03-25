@@ -19,6 +19,9 @@ class Listener(BaseAgent):
         obs_region = self.localize(obs)
         goal_region = self.localize(goal)
         
+        if obs_region not in directions:
+            a=3
+        
         if obs_region == goal_region:
             target = goal
         else:
@@ -36,6 +39,12 @@ class Listener(BaseAgent):
                 min_dist = dist
                 optimal_action = action
             env.unwrapped.world = copy.deepcopy(backup)
+            
+            # Reset termination and truncation flags s.t. the agent can continue
+            if env.terminations['agent_0'] or env.truncations['agent_0']:
+                env.terminations['agent_0'] = False
+                env.truncations['agent_0'] = False
+                break
         
         return optimal_action
             

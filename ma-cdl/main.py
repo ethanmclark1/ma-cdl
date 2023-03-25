@@ -43,7 +43,7 @@ class MA_CDL():
             self.env.step(action)
             obs, _, termination, truncation, _ = self.env.last()
             
-        print('Success!' if termination else 'Failure!')
+        print('Mission success!' if termination else 'Mission failed!')
         
 if __name__ == '__main__':
     config = get_arguments()

@@ -110,7 +110,7 @@ class Language:
         nonnavigable_var = variance(nonnavigable)
         
         criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var, region_var])
-        weights = np.array((3, 5, 15, 25, 20))
+        weights = np.array((10, 3, 20, 25, 25))
         problem_cost = np.sum(criterion * weights)
         return problem_cost
 
@@ -119,10 +119,10 @@ class Language:
         lb, ub = -1.25, 1.25
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, 7):
+        for num in range(2, 3):
             print(f'Generating langauge with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
-            res = optimize.differential_evolution(self._optimizer, bounds, maxiter=400,
+            res = optimize.differential_evolution(self._optimizer, bounds, maxiter=5,
                                                   init='sobol', disp=True)
             if optim_val > res.fun:
                 optim_val = res.fun

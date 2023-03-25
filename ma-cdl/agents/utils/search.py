@@ -15,9 +15,12 @@ class Node:
         return self.idx == other.idx
     
 def search(start_idx, goal_idx, obstacles, regions, name):
+    if start_idx == goal_idx:
+        return [start_idx]
+    
     open_list, closed_list = PriorityQueue(), []
     start_node = Node(None, start_idx)
-    goal_node = Node(None, goal_idx)            
+    goal_node = Node(None, goal_idx)   
     
     open_list.put((0, start_node))
     while not open_list.empty():
@@ -57,4 +60,6 @@ def search(start_idx, goal_idx, obstacles, regions, name):
                 successor.f = successor.g + successor.h
                 open_list.put((successor.f, successor))
 
+    if name == 'Speaker':
+        a=3
     return []

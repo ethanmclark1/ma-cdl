@@ -8,9 +8,8 @@ from environment.utils.simple_env import SimpleEnv, make_env
 
 
 class raw_env(SimpleEnv, EzPickle):
-    # def __init__(self, max_cycles=25, num_obstacles=3, obstacle_size=0.02, continuous_actions=False, render_mode=None):
     def __init__(self, config):
-        max_cycles = 25
+        max_cycles = 200
         continuous_actions = False
         render_mode = 'human'
         scenario = Scenario()

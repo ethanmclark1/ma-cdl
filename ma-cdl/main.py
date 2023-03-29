@@ -8,10 +8,10 @@ from agents.speaker import Speaker
 from agents.listener import Listener
 from agents.utils.language import Language
 
-class MA_CDL():
-    def __init__(self, config):
-        self.env = simple_path.env(config)
-        self.language = Language(config)
+class MA_CDL2():
+    def __init__(self, args):
+        self.env = simple_path.env(args)
+        self.language = Language(args, self.env.metadata['num_obstacles'])
         self.speaker = Speaker()
         self.listener = Listener()
     
@@ -46,6 +46,6 @@ class MA_CDL():
         print('Mission success!' if termination else 'Mission failed!')
         
 if __name__ == '__main__':
-    config = get_arguments()
-    ma_cdl = MA_CDL(config)
-    ma_cdl.act()
+    args = get_arguments()
+    MA_CDL2 = MA_CDL2(args)
+    MA_CDL2.act()

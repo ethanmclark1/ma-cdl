@@ -82,7 +82,7 @@ class Agent(Entity):  # properties of agent entities
 
 
 class World:  # multi-agent world
-    def __init__(self, config):
+    def __init__(self, args):
         # list of agents and entities (can change at execution-time!)
         self.agents = []
         self.landmarks = []
@@ -99,11 +99,11 @@ class World:  # multi-agent world
         # contact response parameters
         self.contact_force = 1e2
         self.contact_margin = 1e-3
-        # position constraints
-        self.start_constr = config.start_constr
-        self.goal_constr = config.goal_constr
-        self.obs_constr = config.obs_constr
-
+        # environment configuration
+        self.start_constr = args.start_constr
+        self.goal_constr = args.goal_constr
+        self.obs_constr = args.obs_constr
+        
     # return all entities in the world
     @property
     def entities(self):

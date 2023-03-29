@@ -16,11 +16,11 @@ from shapely.geometry import Point, LineString, MultiLineString, Polygon
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
 
 class Language:
-    def __init__(self, args):
+    def __init__(self, args, num_obstacles):
         corners = list(product((1, -1), repeat=2))
         self.name = self.__class__.__name__
         self.configs_to_consider = 100
-        self.num_obstacles = args.num_obs
+        self.num_obstacles = num_obstacles
         self.obs_constr = args.obs_constr
         self.goal_constr = args.goal_constr
         self.start_constr = args.start_constr
@@ -90,14 +90,18 @@ class Language:
         
         nonnavigable, unsafe = [], []
         for _ in range(self.configs_to_consider):
-            start = Point(random.choice(self.start_constr)*np.random.uniform(0, 1, size=(2,)))
-            goal = Point(random.choice(self.goal_constr)*np.random.uniform(0, 1, size=(2,)))
+            start = Point(np.array([np.random.uniform(self.start_constr[0][0], self.start_constr[0][1]),
+                                    np.random.uniform(self.start_constr[1][0], self.start_constr[1][1])]))
+
+            goal = Point(np.array([np.random.uniform(self.goal_constr[0][0], self.goal_constr[0][1]),
+                                   np.random.uniform(self.goal_constr[1][0], self.goal_constr[1][1])]))
             
             start_idx = list(map(lambda region: region.contains(start), regions)).index(True)
             goal_idx = list(map(lambda region: region.contains(goal), regions)).index(True)
             
-            obs_pos = np.random.uniform(0, 1, size=(self.num_obstacles, 2))
-            obstacles = [Point(random.choice(self.obs_constr)*obs_pos[i]) for i in range(self.num_obstacles)]
+            obstacles = [Point(np.array([np.random.uniform(self.obs_constr[0][0], self.obs_constr[0][1]),
+                                         np.random.uniform(self.obs_constr[1][0], self.obs_constr[1][1])])) 
+                         for i in range(self.num_obstacles)]
             
             config_cost = self._config_cost(start_idx, goal_idx, obstacles, regions)
             nonnavigable += [config_cost[0]]
@@ -105,12 +109,11 @@ class Language:
         
         unsafe = sum(unsafe)
         efficiency = len(regions)
-        region_var = 0 if len(regions) == 1 else variance([region.area for region in regions])
         nonnavigable_mu = mean(nonnavigable)
         nonnavigable_var = variance(nonnavigable)
         
-        criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var, region_var])
-        weights = np.array((10, 3, 20, 25, 25))
+        criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
+        weights = np.array((10, 4, 20, 25))
         problem_cost = np.sum(criterion * weights)
         return problem_cost
 
@@ -119,17 +122,16 @@ class Language:
         lb, ub = -1.25, 1.25
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, 3):
-            print(f'Generating langauge with {num} lines...')
+        for num in range(2, 10):
+            print(f'Generating language with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
-            res = optimize.differential_evolution(self._optimizer, bounds, maxiter=5,
-                                                  init='sobol', disp=True)
+            res = optimize.differential_evolution(self._optimizer, bounds, disp=True,
+                                                  maxiter=1000, init='sobol')
+            print(f'Cost: {res.fun}')
             if optim_val > res.fun:
                 optim_val = res.fun
                 optim_lines = res.x
         
-        end = time.time()
-        print(f'Optimization time: {end-start:.2f} seconds')
         optim_lines = np.reshape(optim_lines, (-1, 4))
         return optim_lines
     

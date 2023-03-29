@@ -1,25 +1,65 @@
 import argparse
 
+def get_problem_info(problem):
+    problem_types = {
+        'cluster': {
+            'start': ((-1, -0.80), (-0.25, 0.25)),
+            'goal': ((0.80, 1), (-0.25, 0.25)),
+            'obs': ((-0.25, 0.25), (-0.25, 0.25))
+        },
+        'vertical': {
+            'start': ((-1, -0.80), (-1, 1)),
+            'goal': ((0.80, 1), (-1, 1)),
+            'obs': ((-0.1, 0.1), (-0.75, 0.75))
+        },
+        'horizontal': {
+            'start': ((-1, 1), (-1, -0.80)),
+            'goal': ((-1, 1), (0.80, 1)),
+            'obs': ((-0.75, 0.75), (-0.1, 0.1))
+        },
+        'left': {
+            'start': ((0, 1), (-1, -0.80)),
+            'goal': ((0, 1), (0.80, 1)),
+            'obs': ((-1, 0), (-1, 1))
+        },
+        'right': {
+            'start': ((-1, 0), (-1, -0.80)),
+            'goal': ((-1, 0), (0.80, 1)),
+            'obs': ((0, 1), (-1, 1))
+        },
+        'up': {
+            'start': ((-1, 0.80), (-1, 0)),
+            'goal': ((0.80, 1), (-1, 0)),
+            'obs': ((-1, 1), (0, 1))
+        },
+        'down': {
+            'start': ((-1, 0.80), (0, 1)),
+            'goal': ((0.80, 1), (0, 1)),
+            'obs': ((-1, 1), (-1, 0))
+        }
+    }
+    problem_info = problem_types[problem]
+    start = problem_info['start']
+    goal = problem_info['goal']
+    obs = problem_info['obs']
+    return start, goal, obs
+
 def get_arguments():
     parser = argparse.ArgumentParser(
         description='Teach a multi-agent system to create its own context-dependent language.')
-    parser.add_argument('--start_constr', metavar='START', type=int, nargs='+', default=[3], choices=[0,1,2,3,4],
-                        help='quadrant(s) to constrain start position to {default_val: %(default)s, choices: [%(choices)s]}')
-    parser.add_argument('--goal_constr', metavar='GOAL', type=int, nargs='+', default=[4], choices=[0,1,2,3,4], 
-                        help='quadrant(s) to constrain goal position to {default_val: %(default)s, choices: [%(choices)s]}')
-    parser.add_argument('--num_obs', metavar='N', type=int, default=1,
-                        help='number of obstacles in environment {default_val: %(default)s}')
-    parser.add_argument('--obs_constr', metavar='OBS', type=int, nargs='+', default=[1], choices=[0,1,2,3,4],
-                        help='quadrant(s) to constrain obstacle position(s) to {default_val: %(default)s, choices: [%(choices)s]}')
-    parser.add_argument('--obs_size', metavar='SIZE', type=float, default=0.02,
-                        help='size of obstacles in environment {default_val: %(default)s}')
-    parser.add_argument('--render_mode', metavar='MODE', type=str, default='None', choices=['human', 'rgb_array', 'None'], 
+    parser.add_argument('--obs_size', metavar='SIZE', type=float, default=0.075,
+                        help='size/radius of obstacles {default_val: %(default)s}')
+    parser.add_argument('--problem', metavar='PROBLEM', type=str, default='corners', 
+                        choices=['cluster', 'vertical', 'horizontal', 'left', 'right', 'up', 'down'],
+                        help='choose problem setup for obstacles {default_val: %(default)s, choices: [%(choices)s]}')
+    parser.add_argument('--render_mode', metavar='RENDER', type=str, default='human', choices=['human', 'rgb_array', 'None'], 
                         help='mode of visualization {default_val: None, choices: [%(choices)s]}')
     args = parser.parse_args()
-    
-    pos_constr = [(1, 1), (1, -1), (-1, -1), (-1, 1)]
-    args.start_constr = pos_constr if 0 in args.start_constr else list(map(lambda x: pos_constr[x-1], args.start_constr))
-    args.goal_constr = pos_constr if 0 in args.goal_constr else list(map(lambda x: pos_constr[x-1], args.goal_constr))
-    args.obs_constr = pos_constr if 0 in args.obs_constr else list(map(lambda x: pos_constr[x-1], args.obs_constr))
 
+    start_constr, goal_constr, obs_constr = get_problem_info(args.problem)
+    
+    delattr(args, 'problem')
+    setattr(args, 'start_constr', start_constr)
+    setattr(args, 'goal_constr', goal_constr)
+    setattr(args, 'obs_constr', obs_constr)
     return args

@@ -43,8 +43,8 @@ def search(start_idx, goal_idx, obstacles, regions, name):
                     continue
                 elif name == 'Speaker':
                     successor.f = 1e3
-                    open_list.put((successor.f, successor))
-            elif successor.idx == goal_idx:
+                    
+            if successor.idx == goal_idx:
                 path = []
                 current = successor
                 while current is not None:
@@ -57,9 +57,8 @@ def search(start_idx, goal_idx, obstacles, regions, name):
 
                 successor.g = regions[cur_node.idx].centroid.distance(regions[successor.idx].centroid)
                 successor.h = regions[successor.idx].centroid.distance(regions[goal_node.idx].centroid)
-                successor.f = successor.g + successor.h
+                if successor.f == 0:
+                    successor.f = successor.g + successor.h
                 open_list.put((successor.f, successor))
 
-    if name == 'Speaker':
-        a=3
     return []

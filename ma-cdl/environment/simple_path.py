@@ -65,10 +65,17 @@ class Scenario(BaseScenario):
         
         # set state of obstacles
         if isinstance(world.obs_constr, tuple):
-            obstacles = [np.random.uniform(*zip(*world.obs_constr)) for _ in range(len(world.landmarks[1:]))]
+            for i in range(len(world.landmarks[1:])):
+                world.landmarks[i+1].state.p_vel = np.zeros(world.dim_p)
+                world.landmarks[i+1].state.p_pos = np.random.uniform(*zip(*world.obs_constr))
         else:
-            obstacles = [np.random.uniform(*zip(*world.obs_constr[0])) for _ in range(len(world.landmarks[1:]))]
-            obstacles += [np.random.uniform(*zip(*world.obs_constr[1])) for _ in range(len(world.landmarks[1:]))]
+            for i in range(len(world.landmarks[1:])):
+                if i < len(world.landmarks[1:]) / 2:
+                    world.landmarks[i+1].state.p_vel = np.zeros(world.dim_p)
+                    world.landmarks[i+1].state.p_pos = np.random.uniform(*zip(*world.obs_constr[0]))
+                else:
+                    world.landmarks[i+1].state.p_vel = np.zeros(world.dim_p)
+                    world.landmarks[i+1].state.p_pos = np.random.uniform(*zip(*world.obs_constr[1]))
             
     # Created custom reward function in Speaker class
     def reward(self, agent, world):

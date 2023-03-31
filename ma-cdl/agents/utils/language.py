@@ -14,6 +14,7 @@ from agents.utils.search import search
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
+weights = np.array((12, 2, 30, 30))
 
 class Language:
     def __init__(self, args, num_obstacles):
@@ -118,7 +119,6 @@ class Language:
         nonnavigable_var = variance(nonnavigable)
         
         criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
-        weights = np.array((10, 4, 25, 30))
         problem_cost = np.sum(criterion * weights)
         return problem_cost
 
@@ -127,11 +127,11 @@ class Language:
         lb, ub = -1.25, 1.25
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, 8):
+        for num in range(2, 6):
             print(f'Generating language with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
             res = optimize.differential_evolution(self._optimizer, bounds, disp=True,
-                                                  maxiter=1000, init='sobol')
+                                                  maxiter=1500, init='sobol')
             print(f'Cost: {res.fun}')
             if optim_val > res.fun:
                 optim_val = res.fun
@@ -145,7 +145,7 @@ class Language:
         for idx, region in enumerate(regions):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        plt.savefig(f'{self.problem_type}.png')
+        plt.savefig(f'{self.problem_type}+{weights}.png')
     
     # Returns regions that define the language
     def create(self):

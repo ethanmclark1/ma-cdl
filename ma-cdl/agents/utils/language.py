@@ -20,6 +20,7 @@ class Language:
         corners = list(product((1, -1), repeat=2))
         self.name = self.__class__.__name__
         self.configs_to_consider = 100
+        self.problem_type = args.problem
         self.num_obstacles = num_obstacles
         self.obs_constr = args.obs_constr
         self.goal_constr = args.goal_constr
@@ -52,6 +53,22 @@ class Language:
         regions = [polygons] if polygons.geom_type == 'Polygon' else \
             [polygons.geoms[i] for i in range(len(polygons.geoms))]
         return regions
+    
+    def _generate_points(self, regions):
+        obstacles = []    
+        start = Point(np.random.uniform(*zip(*self.start_constr)))
+        goal = Point(np.random.uniform(*zip(*self.goal_constr)))        
+        start_idx = list(map(lambda region: region.contains(start), regions)).index(True)
+        goal_idx = list(map(lambda region: region.contains(goal), regions)).index(True)
+        
+        # set state of obstacles
+        if isinstance(self.obs_constr, tuple):
+            obstacles = [Point(np.random.uniform(*zip(*self.obs_constr))) for _ in range(self.num_obstacles)]
+        else:
+            obstacles = [Point(np.random.uniform(*zip(*self.obs_constr[0]))) for _ in range(self.num_obstacles // 2)]
+            obstacles += [Point(np.random.uniform(*zip(*self.obs_constr[1]))) for _ in range(self.num_obstacles // 2)]
+        
+        return start_idx, goal_idx, obstacles
         
     """
     Calculate cost of a configuration (i.e. start, goal, and obstacles)
@@ -90,19 +107,7 @@ class Language:
         
         nonnavigable, unsafe = [], []
         for _ in range(self.configs_to_consider):
-            start = Point(np.array([np.random.uniform(self.start_constr[0][0], self.start_constr[0][1]),
-                                    np.random.uniform(self.start_constr[1][0], self.start_constr[1][1])]))
-
-            goal = Point(np.array([np.random.uniform(self.goal_constr[0][0], self.goal_constr[0][1]),
-                                   np.random.uniform(self.goal_constr[1][0], self.goal_constr[1][1])]))
-            
-            start_idx = list(map(lambda region: region.contains(start), regions)).index(True)
-            goal_idx = list(map(lambda region: region.contains(goal), regions)).index(True)
-            
-            obstacles = [Point(np.array([np.random.uniform(self.obs_constr[0][0], self.obs_constr[0][1]),
-                                         np.random.uniform(self.obs_constr[1][0], self.obs_constr[1][1])])) 
-                         for i in range(self.num_obstacles)]
-            
+            start_idx, goal_idx, obstacles = self._generate_points(regions)
             config_cost = self._config_cost(start_idx, goal_idx, obstacles, regions)
             nonnavigable += [config_cost[0]]
             unsafe += [config_cost[1]]
@@ -113,7 +118,7 @@ class Language:
         nonnavigable_var = variance(nonnavigable)
         
         criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
-        weights = np.array((10, 4, 20, 25))
+        weights = np.array((10, 4, 25, 30))
         problem_cost = np.sum(criterion * weights)
         return problem_cost
 
@@ -122,7 +127,7 @@ class Language:
         lb, ub = -1.25, 1.25
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, 10):
+        for num in range(2, 8):
             print(f'Generating language with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
             res = optimize.differential_evolution(self._optimizer, bounds, disp=True,
@@ -140,7 +145,7 @@ class Language:
         for idx, region in enumerate(regions):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        plt.savefig('regions.png')
+        plt.savefig(f'{self.problem_type}.png')
     
     # Returns regions that define the language
     def create(self):

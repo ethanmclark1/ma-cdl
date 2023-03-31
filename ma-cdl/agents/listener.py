@@ -19,7 +19,7 @@ class Listener(BaseAgent):
         obs_region = self.localize(obs)
         goal_region = self.localize(goal)
         
-        if obs_region not in directions:
+        if obs_region == None or goal_region == None:
             a=3
         
         if obs_region == goal_region:

@@ -35,13 +35,13 @@ class Scenario(BaseScenario):
             agent.name = f"agent_{i}"
             agent.collide = False
             agent.silent = True
-            agent.size = 0.075
+            agent.size = 0.1
         # add landmarks (4 obstacles + 1 goal)
         world.landmarks = [Landmark() for i in range(4 + 1)]
         world.landmarks[0].name = "goal"
         world.landmarks[0].collide = False
         world.landmarks[0].movable = False
-        world.landmarks[0].size = 0.075
+        world.landmarks[0].size = 0.1
         for i, landmark in enumerate(world.landmarks[1:]):
             landmark.name = "landmark %d" % i
             landmark.collide = False
@@ -51,29 +51,25 @@ class Scenario(BaseScenario):
 
     def reset_world(self, world, np_random):
         world.agents[0].goal = world.landmarks[0]
-        # agent is blue
-        world.agents[0].color = np.array([0.25, 0.25, 0.75])
-        # goal is green
-        world.agents[0].goal.color = np.array([0.25, 0.75, 0.25])
-        # obstacles are red
+        # agent.color = green; goal.color = blue; obstacles.color = red
+        world.agents[0].color = np.array([0.25, 0.75, 0.25])
+        world.agents[0].goal.color = np.array([0.25, 0.25, 0.75])
         for landmark in world.landmarks[1:]:
             landmark.color = np.array([0.75, 0.25, 0.25])
-        
-        # set state of agents and landmarks
+            
+        # set state of start and goal
         world.agents[0].state.p_vel = np.zeros(world.dim_p)
-        world.agents[0].state.p_pos = np.array([np.random.uniform(world.start_constr[0][0], world.start_constr[0][1]),
-                                                np.random.uniform(world.start_constr[1][0], world.start_constr[1][1])])
-
+        world.agents[0].state.p_pos = np.random.uniform(*zip(*world.start_constr))
         world.landmarks[0].state.p_vel = np.zeros(world.dim_p)
-        world.landmarks[0].state.p_pos = np.array([np.random.uniform(world.goal_constr[0][0], world.goal_constr[0][1]),
-                                                   np.random.uniform(world.goal_constr[1][0], world.goal_constr[1][1])])
-                
-        for landmark in world.landmarks[1:]:
-            landmark.state.p_vel = np.zeros(world.dim_p)
-            landmark.state.p_pos = np.array([np.random.uniform(world.obs_constr[0][0], world.obs_constr[0][1]),
-                                             np.random.uniform(world.obs_constr[1][0], world.obs_constr[1][1])])
+        world.landmarks[0].state.p_pos = np.random.uniform(*zip(*world.goal_constr))
         
-
+        # set state of obstacles
+        if isinstance(world.obs_constr, tuple):
+            obstacles = [np.random.uniform(*zip(*world.obs_constr)) for _ in range(len(world.landmarks[1:]))]
+        else:
+            obstacles = [np.random.uniform(*zip(*world.obs_constr[0])) for _ in range(len(world.landmarks[1:]))]
+            obstacles += [np.random.uniform(*zip(*world.obs_constr[1])) for _ in range(len(world.landmarks[1:]))]
+            
     # Created custom reward function in Speaker class
     def reward(self, agent, world):
         return 0

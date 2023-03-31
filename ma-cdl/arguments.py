@@ -7,6 +7,11 @@ def get_problem_info(problem):
             'goal': ((0.80, 1), (-0.25, 0.25)),
             'obs': ((-0.25, 0.25), (-0.25, 0.25))
         },
+        'L-shaped': {
+            'start': ((-1, -0.80), (-0.25, 0.25)),
+            'goal': ((0.4, 0.6), (0.4, 0.6)),
+            'obs': [((-0.1, 0.1), (0, 0.75)), ((0.1, 0.5), (0, 0.25))]
+        },
         'vertical': {
             'start': ((-1, -0.80), (-1, 1)),
             'goal': ((0.80, 1), (-1, 1)),
@@ -36,6 +41,11 @@ def get_problem_info(problem):
             'start': ((-1, 0.80), (0, 1)),
             'goal': ((0.80, 1), (0, 1)),
             'obs': ((-1, 1), (-1, 0))
+        },
+        'random': {
+          'start': ((-1, 1), (-1, 1)),
+          'goal': ((-1, 1), (-1, 1)),
+          'obs': ((-1, 1), (-1, 1))  
         }
     }
     problem_info = problem_types[problem]
@@ -47,10 +57,10 @@ def get_problem_info(problem):
 def get_arguments():
     parser = argparse.ArgumentParser(
         description='Teach a multi-agent system to create its own context-dependent language.')
-    parser.add_argument('--obs_size', metavar='SIZE', type=float, default=0.075,
+    parser.add_argument('--obs_size', metavar='SIZE', type=float, default=0.1,
                         help='size/radius of obstacles {default_val: %(default)s}')
-    parser.add_argument('--problem', metavar='PROBLEM', type=str, default='corners', 
-                        choices=['cluster', 'vertical', 'horizontal', 'left', 'right', 'up', 'down'],
+    parser.add_argument('--problem', metavar='PROBLEM', type=str, default='cluster', 
+                        choices=['cluster', 'L-shaped', 'vertical', 'horizontal', 'left', 'right', 'up', 'down', 'random'],
                         help='choose problem setup for obstacles {default_val: %(default)s, choices: [%(choices)s]}')
     parser.add_argument('--render_mode', metavar='RENDER', type=str, default='human', choices=['human', 'rgb_array', 'None'], 
                         help='mode of visualization {default_val: None, choices: [%(choices)s]}')
@@ -58,7 +68,6 @@ def get_arguments():
 
     start_constr, goal_constr, obs_constr = get_problem_info(args.problem)
     
-    delattr(args, 'problem')
     setattr(args, 'start_constr', start_constr)
     setattr(args, 'goal_constr', goal_constr)
     setattr(args, 'obs_constr', obs_constr)

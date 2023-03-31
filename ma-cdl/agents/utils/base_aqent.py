@@ -6,6 +6,8 @@ class BaseAgent():
         self.language = language
     
     def localize(self, pos):
-        return list(map(lambda region: region.contains(pos), self.language)).index(True)
-    
-    
+        try:
+            region_idx = list(map(lambda region: region.contains(pos), self.language)).index(True)
+        except:
+            region_idx = None
+        return region_idx    

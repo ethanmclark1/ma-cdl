@@ -9,7 +9,7 @@ from environment.utils.simple_env import SimpleEnv, make_env
 
 class raw_env(SimpleEnv, EzPickle):
     def __init__(self, args):
-        max_cycles = 200
+        max_cycles = 500
         continuous_actions = False
         render_mode = args.render_mode
         scenario = Scenario()
@@ -22,6 +22,7 @@ class raw_env(SimpleEnv, EzPickle):
             continuous_actions=continuous_actions,
         )
         self.metadata["name"] = "QuadExplore"
+        self.metadata["obstacle_size"] = args.obs_size
         self.metadata["num_obstacles"] = len(self.world.landmarks) - 1
 
 env = make_env(raw_env)

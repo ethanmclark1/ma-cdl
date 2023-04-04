@@ -3,30 +3,29 @@ import time
 import random
 import warnings
 import numpy as np
+import sympy as sp
 import matplotlib.pyplot as plt
 
 from math import pi, inf
 from scipy import optimize
+from shapely import points
 from itertools import product
-from queue import PriorityQueue
 from statistics import mean, variance
-from agents.utils.search import search
+from agents.utils.search.rrt_star import RRTStar
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
 weights = np.array((12, 2, 30, 30))
 
 class Language:
-    def __init__(self, args, num_obstacles):
+    def __init__(self, env):
         corners = list(product((1, -1), repeat=2))
-        self.name = self.__class__.__name__
+        self.env = env
         self.configs_to_consider = 100
-        self.problem_type = args.problem
-        self.num_obstacles = num_obstacles
-        self.obs_constr = args.obs_constr
-        self.goal_constr = args.goal_constr
-        self.start_constr = args.start_constr
-        self.obs_area = (pi*args.obs_size) ** 2
+        self.name = self.__class__.__name__
+        self.obs_radius = self.env.metadata['obstacle_size']
+        self.num_obstacles = self.env.metadata['num_obstacles']
+        self.rrt_star = RRTStar(self.obs_radius)
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
                            LineString([corners[2], corners[3]]),
@@ -55,41 +54,27 @@ class Language:
             [polygons.geoms[i] for i in range(len(polygons.geoms))]
         return regions
     
-    def _generate_points(self, regions):
-        obstacles = []    
-        start = Point(np.random.uniform(*zip(*self.start_constr)))
-        goal = Point(np.random.uniform(*zip(*self.goal_constr)))        
-        start_idx = list(map(lambda region: region.contains(start), regions)).index(True)
-        goal_idx = list(map(lambda region: region.contains(goal), regions)).index(True)
-        
-        # set state of obstacles
-        if isinstance(self.obs_constr, tuple):
-            obstacles = [Point(np.random.uniform(*zip(*self.obs_constr))) for _ in range(self.num_obstacles)]
-        else:
-            obstacles = [Point(np.random.uniform(*zip(*self.obs_constr[0]))) for _ in range(self.num_obstacles // 2)]
-            obstacles += [Point(np.random.uniform(*zip(*self.obs_constr[1]))) for _ in range(self.num_obstacles // 2)]
-        
-        return start_idx, goal_idx, obstacles
-        
     """
     Calculate cost of a configuration (i.e. start, goal, and obstacles)
     with respect to the regions and positions under some positional constraints: 
         1. Unsafe area caused by obstacles
         2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
     """
-    def _config_cost(self, start_idx, goal_idx, obstacles, regions):
-        obs_idx = list(set([idx for idx, region in enumerate(regions) 
-                            for obs in obstacles if region.contains(obs)]))
-        nonnavigable = sum([regions[idx].area for idx in obs_idx])
+    def _config_cost(self, start, goal, obstacles, regions):
+        obstacles_idx = list(set([idx for idx, region in enumerate(regions) for obs in obstacles if region.contains(Point(obs))]))
+        nonnavigable = sum([regions[idx].area for idx in obstacles_idx])
         
-        if start_idx in obs_idx or goal_idx in obs_idx:
-            unsafe = True
-        elif start_idx == goal_idx:
-            unsafe = False
-        else:
-            path = search(start_idx, goal_idx, obstacles, regions, self.name)
-            unsafe = False if path else True
-            
+        unsafe = 0
+        num_path_checks = 15
+        path = self.rrt_star.plan(start, goal, obstacles)
+        path = points(path)
+        significand = len(path) // num_path_checks
+        remainder = len(path) % num_path_checks
+        for idx in range(num_path_checks):
+            region_idx = list(map(lambda region: region.contains(Point(path[idx*significand])), regions)).index(True)
+            if region_idx in obstacles_idx:
+                unsafe += 1
+                
         return nonnavigable, unsafe
         
     """ 
@@ -108,8 +93,9 @@ class Language:
         
         nonnavigable, unsafe = [], []
         for _ in range(self.configs_to_consider):
-            start_idx, goal_idx, obstacles = self._generate_points(regions)
-            config_cost = self._config_cost(start_idx, goal_idx, obstacles, regions)
+            self.env.reset()
+            start, goal, obstacles = self.env.unwrapped.get_init_conditions()
+            config_cost = self._config_cost(start, goal, obstacles, regions)
             nonnavigable += [config_cost[0]]
             unsafe += [config_cost[1]]
         
@@ -124,14 +110,14 @@ class Language:
 
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_lines(self):
-        lb, ub = -1.25, 1.25
+        lb, ub = -2, 2
         optim_val, optim_lines = math.inf, None
         start = time.time()
-        for num in range(2, 6):
+        for num in range(2, 7):
             print(f'Generating language with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
             res = optimize.differential_evolution(self._optimizer, bounds, disp=True,
-                                                  maxiter=1500, init='sobol')
+                                                  maxiter=2000, init='sobol')
             print(f'Cost: {res.fun}')
             if optim_val > res.fun:
                 optim_val = res.fun

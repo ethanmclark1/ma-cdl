@@ -6,35 +6,25 @@ from arguments import get_arguments
 from environment import simple_path
 from agents.speaker import Speaker
 from agents.listener import Listener
-from agents.utils.language import Language
+from agents.language import Language
 
 class MA_CDL2():
     def __init__(self, args):
         self.env = simple_path.env(args)
-        self.language = Language(args, self.env.metadata['num_obstacles'])
+        self.language = Language(self.env)
         self.speaker = Speaker()
         self.listener = Listener()
     
     # Passes language to both speaker and listener
-    def _set_langauge(self):
+    def create_language(self):
         language = self.language.create()
         self.speaker.set_language(language)
         self.listener.set_language(language)
-        
-    def _get_init_conditions(self):
-        world = self.env.unwrapped.world
-        start_pos = world.agents[0].state.p_pos
-        goal_pos = world.agents[0].goal.state.p_pos
-        obstacles = copy.copy(world.landmarks)
-        obstacles.remove(world.agents[0].goal)
-        obstacles = np.array([obstacle.state.p_pos for obstacle in obstacles])
-        return start_pos, goal_pos, obstacles
 
     def act(self):   
-        self.env.reset()
-        self._set_langauge()
+        self.create_language()
         
-        start, goal, obstacles = self._get_init_conditions()
+        start, goal, obstacles = self.env.unwrapped.get_init_conditions()
         directions = self.speaker.direct(start, goal, obstacles)
         obs, _, termination, truncation, _ = self.env.last()
         

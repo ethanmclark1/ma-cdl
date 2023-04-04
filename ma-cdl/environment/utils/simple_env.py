@@ -1,5 +1,6 @@
 import os
 import pdb
+import copy
 
 import gymnasium
 import numpy as np
@@ -133,6 +134,16 @@ class SimpleEnv(AECEnv):
         return self.scenario.observation(
             self.world.agents[self._index_map[agent]], self.world
         ).astype(np.float32)
+        
+    def get_init_conditions(self):
+        self.reset()
+        world = self.unwrapped.world
+        start = world.agents[0].state.p_pos
+        goal = world.agents[0].goal.state.p_pos
+        obstacles = copy.copy(world.landmarks)
+        obstacles.remove(world.agents[0].goal)
+        obstacles = np.array([obstacle.state.p_pos for obstacle in obstacles])
+        return start, goal, obstacles
 
     def state(self):
         states = tuple(
@@ -247,9 +258,7 @@ class SimpleEnv(AECEnv):
         self.agent_selection = self._agent_selector.next()
 
         self.current_actions[current_idx] = action
-        agent_size = self.world.agents[0].size
-        landmark_size = self.world.agents[0].goal.size
-        min_dist = agent_size / 2 + landmark_size / 2
+        min_dist = self.world.agents[0].size + self.world.agents[0].goal.size
 
         if next_idx == 0:
             self._execute_world_step()
@@ -355,16 +364,3 @@ class SimpleEnv(AECEnv):
             pygame.event.pump()
             pygame.display.quit()
             self.renderOn = False
-    
-    # Find current region of agent
-    def localize_agent(self, regions):
-        # Make localization more robust by increasing slack variable
-        slack = 0.000001
-        agent_pos = self.state()[0:2]
-        cur_region = None
-        for idx, region in enumerate(regions):
-            if (region[0] - slack <= agent_pos[0] <= region[1] + slack and 
-                region[2] - slack <= agent_pos[1] <= region[3] + slack):
-                cur_region = idx
-                break
-        return cur_region

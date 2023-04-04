@@ -1,4 +1,4 @@
-import inspect
+import numpy as np 
 
 from queue import PriorityQueue
 
@@ -14,7 +14,7 @@ class Node:
     def __eq__(self, other):
         return self.idx == other.idx
     
-def search(start_idx, goal_idx, obstacles, regions, name):
+def a_star(start_idx, goal_idx, obstacles, regions):
     if start_idx == goal_idx:
         return [start_idx]
     
@@ -39,10 +39,7 @@ def search(start_idx, goal_idx, obstacles, regions, name):
         
         for successor in successors:
             if any(regions[successor.idx].contains(obstacles)):
-                if name == 'Language':
-                    continue
-                elif name == 'Speaker':
-                    successor.f = 1e3
+                successor.f = 1e3
                     
             if successor.idx == goal_idx:
                 path = []
@@ -60,5 +57,3 @@ def search(start_idx, goal_idx, obstacles, regions, name):
                 if successor.f == 0:
                     successor.f = successor.g + successor.h
                 open_list.put((successor.f, successor))
-
-    return []

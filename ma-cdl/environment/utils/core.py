@@ -100,6 +100,7 @@ class World:  # multi-agent world
         self.contact_force = 1e2
         self.contact_margin = 1e-3
         # environment configuration
+        self.problem_type = args.problem
         self.start_constr = args.start_constr
         self.goal_constr = args.goal_constr
         self.obs_constr = args.obs_constr

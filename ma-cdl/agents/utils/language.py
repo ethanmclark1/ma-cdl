@@ -8,21 +8,22 @@ from scipy import optimize
 from shapely import points
 from itertools import product
 from statistics import mean, variance
-from agents.utils.path_finder.informed_rrt_star import InformedRRTStar
+from agents.utils.path_finder.rrt_star import RRTStar
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
-weights = np.array((12, 2, 30, 30))
+weights = np.array((15, 2, 35, 35))
 
 class Language:
     def __init__(self, env):
         self.env = env
-        self.configs_to_consider = 500
+        self.configs_to_consider = 50
         self.num_obstacles = self.env.metadata['num_obstacles']
-        self.informed_rrt_star = InformedRRTStar(
-            env.metadata["obstacle_radius"])
-        # self.rrt_star = RRTStar(env.metadata["agent_radius"],
-        #                         env.metadata["obstacle_radius"])
+        self.problem_type = env.unwrapped.world.problem_type
+        self.start_constr = env.unwrapped.world.start_constr
+        self.goal_constr = env.unwrapped.world.goal_constr
+        self.obs_constr = env.unwrapped.world.obs_constr
+        self.rrt_star = RRTStar(env.metadata["agent_radius"], env.metadata["obstacle_radius"])
         
         corners = list(product((1, -1), repeat=2))
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
@@ -52,6 +53,20 @@ class Language:
         regions = [polygons] if polygons.geom_type == 'Polygon' else [polygons.geoms[i] for i in range(len(polygons.geoms))]
         return regions
     
+    def _generate_points(self):
+        obstacles = []    
+        start = np.random.uniform(*zip(*self.start_constr))
+        goal = np.random.uniform(*zip(*self.goal_constr))
+        
+        # set state of obstacles
+        if isinstance(self.obs_constr, tuple):
+            obstacles = [np.random.uniform(*zip(*self.obs_constr)) for _ in range(self.num_obstacles)]
+        else:
+            obstacles = [np.random.uniform(*zip(*self.obs_constr[0])) for _ in range(self.num_obstacles // 2)]
+            obstacles += [np.random.uniform(*zip(*self.obs_constr[1])) for _ in range(self.num_obstacles // 2)]
+        
+        return start, goal, obstacles
+    
     """
     Calculate cost of a configuration (i.e. start, goal, and obstacles)
     with respect to the regions and positions under some positional constraints: 
@@ -62,9 +77,12 @@ class Language:
         obstacles_idx = set(idx for idx, region in enumerate(regions)
                             for obs in obstacles if region.contains(Point(obs)))
         nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
-
-        path = self.informed_rrt_star.informed_rrt_star_search(start, goal, obstacles)
-        path = points(path)
+        
+        try:
+            path = self.rrt_star.plan(start, goal, obstacles)
+            path = points(path)
+        except:
+            return
         
         unsafe = 0
         num_path_checks = 12
@@ -99,13 +117,15 @@ class Language:
         regions = self._create_regions(lines)
         if len(regions) == 0: return math.inf
         
+        i = 0
         nonnavigable, unsafe = [], []
-        for _ in range(self.configs_to_consider):
-            self.env.reset()
-            start, goal, obstacles = self.env.unwrapped.get_init_conditions()
+        while i < self.configs_to_consider:
+            start, goal, obstacles = self._generate_points()
             config_cost = self._config_cost(start, goal, obstacles, regions)
-            nonnavigable.append(config_cost[0])
-            unsafe.append(config_cost[1])
+            if config_cost:
+                nonnavigable.append(config_cost[0])
+                nonnavigable.append(config_cost[1])
+                i += 1
         
         unsafe = sum(unsafe)
         efficiency = len(regions)
@@ -118,14 +138,15 @@ class Language:
 
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_lines(self):
-        lb, ub = -2, 2
+        lb, ub = -1.25, 1.25
         optim_val, optim_lines = inf, None
         start = time.time()
         for num in range(2, 7):
             print(f'Generating language with {num} lines...')
             bounds = [(lb, ub) for _ in range(num*4)]
             res = optimize.differential_evolution(self._optimizer, bounds, disp=True,
-                                                  maxiter=2000, init='sobol')
+                                                  maxiter=500, init='sobol')
+            
             print(f'Cost: {res.fun}')
             if optim_val > res.fun:
                 optim_val = res.fun

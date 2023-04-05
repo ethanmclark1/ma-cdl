@@ -38,13 +38,13 @@ class RRTStar():
         self.obstacle_radius = obstacle_radius
         self.min_rand = -1
         self.max_rand = 1
-        self.play_area = self.AreaBounds((-1, 1, -1, 1))
         self.expand_dis = 0.05
-        self.path_resolution = 0.01
-        self.goal_sample_rate = 30
-        self.max_iter = 5000
+        self.path_resolution = 0.05
+        self.goal_sample_rate = 25
+        self.max_iter = 750
         self.connect_circle_dist = 1
         self.search_until_max_iter = False
+        self.play_area = self.AreaBounds((-1, 1, -1, 1))
         self.node_list = []
 
     def plan(self, start, goal, obstacles, animation=False):
@@ -81,14 +81,16 @@ class RRTStar():
                     and new_node):  # if reaches goal
                 last_index = self.search_best_goal_node()
                 if last_index is not None:
-                    return self.generate_final_course(last_index)
-
-        print("reached max iteration")
+                    path = self.generate_final_course(last_index)
+                    self.plot_path(path)
+                    return path
 
         last_index = self.search_best_goal_node()
         if last_index is not None:
-            return self.generate_final_course(last_index)
-
+            path = self.generate_final_course(last_index)
+            self.plot_path(path)
+            return path
+            
         return None
     
     def generate_final_course(self, goal_ind):
@@ -356,3 +358,11 @@ class RRTStar():
         xl = [x + size * math.cos(np.deg2rad(d)) for d in deg]
         yl = [y + size * math.sin(np.deg2rad(d)) for d in deg]
         plt.plot(xl, yl, color)
+        
+    def plot_path(self, path, animation=False):
+        if animation and path is not None:
+            self.draw_graph()
+            plt.plot([x for (x, y) in path], [y for (x, y) in path], '-r')
+            plt.grid(True)
+            plt.pause(0.01)
+            plt.show()

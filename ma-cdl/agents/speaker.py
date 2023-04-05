@@ -12,5 +12,5 @@ class Speaker(BaseAgent):
         goal = Point(goal_pos)
         goal_idx = self.localize(Point(goal_pos))
         obstacles = [Point(obstacle) for obstacle in obstacles]
-        directions = discrete_search(start_idx, goal_idx, obstacles, self.language)
+        directions = a_star(start_idx, goal_idx, obstacles, self.language)
         return directions

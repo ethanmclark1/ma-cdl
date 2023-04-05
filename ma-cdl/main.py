@@ -1,12 +1,11 @@
 import copy
-import torch
 import numpy as np
 
 from arguments import get_arguments
 from environment import simple_path
 from agents.speaker import Speaker
 from agents.listener import Listener
-from agents.language import Language
+from agents.utils.language import Language
 
 class MA_CDL2():
     def __init__(self, args):

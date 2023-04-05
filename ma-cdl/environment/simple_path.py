@@ -22,8 +22,9 @@ class raw_env(SimpleEnv, EzPickle):
             continuous_actions=continuous_actions,
         )
         self.metadata["name"] = "QuadExplore"
-        self.metadata["obstacle_size"] = args.obs_size
         self.metadata["num_obstacles"] = len(self.world.landmarks) - 1
+        self.metadata["agent_radius"] = self.world.landmarks[0].size
+        self.metadata["obstacle_radius"] = args.obs_size
 
 env = make_env(raw_env)
 

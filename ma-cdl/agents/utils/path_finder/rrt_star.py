@@ -33,36 +33,28 @@ class RRTStar():
             self.ymin = float(area[2])
             self.ymax = float(area[3])
 
-    def __init__(self, radius):
-        self.radius = radius
+    def __init__(self, agent_radius, obstacle_radius):
+        self.robot_radius = agent_radius
+        self.obstacle_radius = obstacle_radius
         self.min_rand = -1
         self.max_rand = 1
         self.play_area = self.AreaBounds((-1, 1, -1, 1))
-        self.robot_radius = 0.125
         self.expand_dis = 0.05
-        self.path_resolution = 0.025
+        self.path_resolution = 0.01
         self.goal_sample_rate = 30
-        self.max_iter = 1000
+        self.max_iter = 5000
         self.connect_circle_dist = 1
         self.search_until_max_iter = False
         self.node_list = []
 
-    def plan(self, start, goal, obstacles, animation=True):
-        """
-        rrt star path planning
-
-        animation: flag for animation on or off .
-        """
-        new_dim = np.full(len(obstacles), self.radius)
-
+    def plan(self, start, goal, obstacles, animation=False):
+        new_dim = np.full(len(obstacles), self.obstacle_radius)
         self.start = self.Node(start[0], start[1])
         self.goal_node = self.end = self.Node(goal[0], goal[1])
         self.obstacle_list = np.column_stack((obstacles, new_dim))
-
-        
         self.node_list = [self.start]
+        
         for i in range(self.max_iter):
-            print("Iter:", i, ", number of nodes:", len(self.node_list))
             rnd = self.get_random_node()
             nearest_ind = self.get_nearest_node_index(self.node_list, rnd)
             new_node = self.steer(self.node_list[nearest_ind], rnd, self.expand_dis)
@@ -106,7 +98,7 @@ class RRTStar():
             path.append([node.x, node.y])
             node = node.parent
         path.append([node.x, node.y])
-        return path
+        return list(reversed(path))
     
     def steer(self, from_node, to_node, extend_length=float("inf")):
 
@@ -240,7 +232,7 @@ class RRTStar():
             -------
                 list
                     List with the indices of the nodes inside the ball of
-                    radius r
+                    obstacle_radius r
         """
         nnode = len(self.node_list) + 1
         r = self.connect_circle_dist * math.sqrt(math.log(nnode) / nnode)

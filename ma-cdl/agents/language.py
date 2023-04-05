@@ -1,9 +1,6 @@
-import math
 import time
-import random
 import warnings
 import numpy as np
-import sympy as sp
 import matplotlib.pyplot as plt
 
 from math import pi, inf
@@ -11,7 +8,7 @@ from scipy import optimize
 from shapely import points
 from itertools import product
 from statistics import mean, variance
-from agents.utils.search.rrt_star import RRTStar
+from agents.utils.path_finder.informed_rrt_star import InformedRRTStar
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -19,39 +16,40 @@ weights = np.array((12, 2, 30, 30))
 
 class Language:
     def __init__(self, env):
-        corners = list(product((1, -1), repeat=2))
         self.env = env
-        self.configs_to_consider = 100
-        self.name = self.__class__.__name__
-        self.obs_radius = self.env.metadata['obstacle_size']
+        self.configs_to_consider = 500
         self.num_obstacles = self.env.metadata['num_obstacles']
-        self.rrt_star = RRTStar(self.obs_radius)
+        self.informed_rrt_star = InformedRRTStar(
+            env.metadata["obstacle_radius"])
+        # self.rrt_star = RRTStar(env.metadata["agent_radius"],
+        #                         env.metadata["obstacle_radius"])
+        
+        corners = list(product((1, -1), repeat=2))
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
                            LineString([corners[2], corners[3]]),
                            LineString([corners[3], corners[1]]),
                            LineString([corners[1], corners[0]])]
-    
-    # Both endpoints must be on an environment boundary to be considered valid
+        
     def _get_valid_lines(self, lines):
-        valid_lines = [*self.boundaries]
-        # Get valid lines s.t. both endpoints are on an environment boundary
+        valid_lines = list(self.boundaries)
+
         for line in lines:
             intersection = self.square.intersection(line)
-            if not intersection.is_empty and np.any(np.abs([*intersection.coords]) == 1, axis=1).all():
-                valid_lines.append(intersection)
-        
-        return valid_lines        
+            if not intersection.is_empty:
+                coords = np.array(intersection.coords)
+                if np.any(np.abs(coords) == 1, axis=1).all():
+                    valid_lines.append(intersection)
+
+        return valid_lines    
             
     # Create polygonal regions from lines
     def _create_regions(self, lines):
         valid_lines = self._get_valid_lines(lines)
-        lines = MultiLineString(valid_lines)
-        lines = lines.buffer(distance=1e-12)
+        lines = MultiLineString(valid_lines).buffer(distance=1e-12)
         boundary = lines.convex_hull
         polygons = boundary.difference(lines)
-        regions = [polygons] if polygons.geom_type == 'Polygon' else \
-            [polygons.geoms[i] for i in range(len(polygons.geoms))]
+        regions = [polygons] if polygons.geom_type == 'Polygon' else [polygons.geoms[i] for i in range(len(polygons.geoms))]
         return regions
     
     """
@@ -61,22 +59,32 @@ class Language:
         2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
     """
     def _config_cost(self, start, goal, obstacles, regions):
-        obstacles_idx = list(set([idx for idx, region in enumerate(regions) for obs in obstacles if region.contains(Point(obs))]))
-        nonnavigable = sum([regions[idx].area for idx in obstacles_idx])
+        obstacles_idx = set(idx for idx, region in enumerate(regions)
+                            for obs in obstacles if region.contains(Point(obs)))
+        nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
+
+        path = self.informed_rrt_star.informed_rrt_star_search(start, goal, obstacles)
+        path = points(path)
         
         unsafe = 0
-        num_path_checks = 15
-        path = self.rrt_star.plan(start, goal, obstacles)
-        path = points(path)
-        significand = len(path) // num_path_checks
-        remainder = len(path) % num_path_checks
+        num_path_checks = 12
+        path_length = len(path)
+        significand = path_length // num_path_checks
+
         for idx in range(num_path_checks):
-            region_idx = list(map(lambda region: region.contains(Point(path[idx*significand])), regions)).index(True)
-            if region_idx in obstacles_idx:
+            path_point = path[idx * significand]
+
+            for region_idx, region in enumerate(regions):
+                if region.contains(path_point):
+                    break
+            else:
+                region_idx = None
+
+            if region_idx is not None and region_idx in obstacles_idx:
                 unsafe += 1
-                
+
         return nonnavigable, unsafe
-        
+
     """ 
     Calculate cost of a given problem (i.e. all configurations) 
     with respect to the regions and the given positional constraints: 
@@ -96,8 +104,8 @@ class Language:
             self.env.reset()
             start, goal, obstacles = self.env.unwrapped.get_init_conditions()
             config_cost = self._config_cost(start, goal, obstacles, regions)
-            nonnavigable += [config_cost[0]]
-            unsafe += [config_cost[1]]
+            nonnavigable.append(config_cost[0])
+            unsafe.append(config_cost[1])
         
         unsafe = sum(unsafe)
         efficiency = len(regions)
@@ -111,7 +119,7 @@ class Language:
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_lines(self):
         lb, ub = -2, 2
-        optim_val, optim_lines = math.inf, None
+        optim_val, optim_lines = inf, None
         start = time.time()
         for num in range(2, 7):
             print(f'Generating language with {num} lines...')
@@ -123,6 +131,8 @@ class Language:
                 optim_val = res.fun
                 optim_lines = res.x
         
+        end = time.time()
+        print(f'Elapsed time: {end - start} seconds')
         optim_lines = np.reshape(optim_lines, (-1, 4))
         return optim_lines
     

@@ -5,7 +5,7 @@ def get_problem_info(problem):
         'cluster': {
             'start': ((-1, -0.80), (-0.25, 0.25)),
             'goal': ((0.80, 1), (-0.25, 0.25)),
-            'obs': ((-0.25, 0.25), (-0.25, 0.25))
+            'obs': ((-0.15, 0.15), (-0.15, 0.15))
         },
         'L-shaped': {
             'start': ((-1, -0.80), (-0.25, 0.25)),
@@ -15,12 +15,12 @@ def get_problem_info(problem):
         'vertical': {
             'start': ((-1, -0.80), (-1, 1)),
             'goal': ((0.80, 1), (-1, 1)),
-            'obs': ((-0.1, 0.1), (-0.6, 0.6))
+            'obs': ((-0.075, 0.075), (-0.6, 0.6))
         },
         'horizontal': {
             'start': ((-1, 1), (-1, -0.80)),
             'goal': ((-1, 1), (0.80, 1)),
-            'obs': ((-0.6, 0.6), (-0.1, 0.1))
+            'obs': ((-0.6, 0.6), (-0.075, 0.75))
         },
         'left': {
             'start': ((0, 1), (-1, -0.80)),
@@ -57,7 +57,7 @@ def get_problem_info(problem):
 def get_arguments():
     parser = argparse.ArgumentParser(
         description='Teach a multi-agent system to create its own context-dependent language.')
-    parser.add_argument('--obs_size', metavar='SIZE', type=float, default=0.1,
+    parser.add_argument('--obs_size', metavar='SIZE', type=float, default=0.2,
                         help='size/radius of obstacles {default_val: %(default)s}')
     parser.add_argument('--problem', metavar='PROBLEM', type=str, default='cluster', 
                         choices=['cluster', 'L-shaped', 'vertical', 'horizontal', 'left', 'right', 'up', 'down', 'random'],

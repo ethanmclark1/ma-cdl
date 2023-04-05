@@ -1,6 +1,6 @@
 from shapely import Point
 from agents.utils.base_aqent import BaseAgent
-from agents.utils.search.a_star import a_star
+from agents.utils.path_finder.a_star import a_star
 
 class Speaker(BaseAgent):
     def __init__(self):

@@ -135,4 +135,6 @@ dmypy.json
 ma-cdl.code-workspace
 /.vscode
 
-regions.png
+# Results from running the code
+comparison.png
+ma-cdl/ma-cdl/agents/utils/stored_langs

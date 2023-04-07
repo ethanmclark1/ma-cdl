@@ -1,3 +1,4 @@
+import os
 import time
 import pickle
 import warnings
@@ -34,8 +35,16 @@ class Language:
                            LineString([corners[1], corners[0]])]
         
     def _save(self, regions):
-        with open(f'ma-cdl/agents/utils/stored_langs/{self.problem_type}+{weights}.pkl', 'wb') as f:
-            pickle.dump(regions, f)
+        directory = 'ma-cdl/agents/utils/stored_langs'
+        filename = f'{self.problem_type}+{weights}.pkl'
+        file_path = os.path.join(directory, filename)
+        # Create the directory if it doesn't exist
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        # Save the data using pickle
+        with open(file_path, 'wb') as file:
+            pickle.dump(regions, file)
     
     def load(self):
         with open(f'ma-cdl/agents/utils/stored_langs/{self.problem_type}+{weights}.pkl', 'rb') as f:

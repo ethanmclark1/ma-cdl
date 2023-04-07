@@ -53,7 +53,7 @@ class MA_CDL2():
     def plot(self, cdl, baseline):
         labels = self.env.unwrapped.world.possible_problem_types
         fig, axes = plt.subplots(1, 2, figsize=(15, 6))
-        fig.suptitle('Comparison between Context-Dependent Language and Baseline on Suite of Problem Scenarios')
+        fig.suptitle('Comparison between Context-Dependent Language and Baseline (Voroni Maps) on Suite of Problem Scenarios')
         
         num_iterations = len(axes)
         num_labels = len(labels)

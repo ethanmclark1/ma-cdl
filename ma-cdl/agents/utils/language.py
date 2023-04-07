@@ -1,4 +1,5 @@
 import time
+import pickle
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,7 +18,7 @@ weights = np.array((15, 2, 35, 35))
 class Language:
     def __init__(self, env):
         self.env = env
-        self.configs_to_consider = 50
+        self.configs_to_consider = 2
         self.num_obstacles = self.env.metadata['num_obstacles']
         self.problem_type = env.unwrapped.world.problem_type
         self.start_constr = env.unwrapped.world.start_constr
@@ -32,6 +33,15 @@ class Language:
                            LineString([corners[3], corners[1]]),
                            LineString([corners[1], corners[0]])]
         
+    def _save(self, regions):
+        with open(f'ma-cdl/agents/utils/stored_langs/{self.problem_type}+{weights}.pkl', 'wb') as f:
+            pickle.dump(regions, f)
+    
+    def load(self):
+        with open(f'ma-cdl/agents/utils/stored_langs/{self.problem_type}+{weights}.pkl', 'rb') as f:
+            regions = pickle.load(f)
+        return regions
+    
     def _get_valid_lines(self, lines):
         valid_lines = list(self.boundaries)
 
@@ -124,7 +134,7 @@ class Language:
             config_cost = self._config_cost(start, goal, obstacles, regions)
             if config_cost:
                 nonnavigable.append(config_cost[0])
-                nonnavigable.append(config_cost[1])
+                unsafe.append(config_cost[1])
                 i += 1
         
         unsafe = sum(unsafe)
@@ -152,6 +162,11 @@ class Language:
                 optim_val = res.fun
                 optim_lines = res.x
         
+        print(f'Cost: {res.fun}')
+        if optim_val > res.fun:
+            optim_val = res.fun
+            optim_lines = res.x
+        
         end = time.time()
         print(f'Elapsed time: {end - start} seconds')
         optim_lines = np.reshape(optim_lines, (-1, 4))
@@ -162,7 +177,7 @@ class Language:
         for idx, region in enumerate(regions):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        plt.savefig(f'{self.problem_type}+{weights}.png')
+        plt.savefig(f'ma-cdl/agents/utils/stored_langs/{self.problem_type}+{weights}.png')
     
     # Returns regions that define the language
     def create(self):
@@ -170,4 +185,5 @@ class Language:
         lines = [LineString([line[0:2], line[2:4]]) for line in lines]
         regions = self._create_regions(lines)
         self._visualize(regions)
+        self._save(regions)
         return regions

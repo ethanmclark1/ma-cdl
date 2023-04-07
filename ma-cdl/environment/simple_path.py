@@ -90,7 +90,7 @@ class Scenario(BaseScenario):
     
     def get_problem_configuration(self, world, problem):
         problem_configurations = {
-            'cluster': {
+            'Cluster': {
                 'start': ((-1, -0.80), (-0.25, 0.25)),
                 'goal': ((0.80, 1), (-0.25, 0.25)),
                 'obs': ((-0.15, 0.15), (-0.15, 0.15))
@@ -100,44 +100,46 @@ class Scenario(BaseScenario):
                 'goal': ((0.4, 0.6), (0.4, 0.6)),
                 'obs': [((-0.1, 0.1), (0, 0.6)), ((0.1, 0.5), (0, 0.25))]
             },
-            'vertical': {
+            'Vertical': {
                 'start': ((-1, -0.80), (-1, 1)),
                 'goal': ((0.80, 1), (-1, 1)),
                 'obs': ((-0.075, 0.075), (-0.6, 0.6))
             },
-            'horizontal': {
+            'Horizontal': {
                 'start': ((-1, 1), (-1, -0.80)),
                 'goal': ((-1, 1), (0.80, 1)),
                 'obs': ((-0.6, 0.6), (-0.075, 0.75))
             },
-            'left': {
+            'Left': {
                 'start': ((0, 1), (-1, -0.80)),
                 'goal': ((0, 1), (0.80, 1)),
                 'obs': ((-1, 0), (-1, 1))
             },
-            'right': {
+            'Right': {
                 'start': ((-1, 0), (-1, -0.80)),
                 'goal': ((-1, 0), (0.80, 1)),
                 'obs': ((0, 1), (-1, 1))
             },
-            'up': {
+            'Up': {
                 'start': ((-1, 0.80), (-1, 0)),
                 'goal': ((0.80, 1), (-1, 0)),
                 'obs': ((-1, 1), (0, 1))
             },
-            'down': {
+            'Down': {
                 'start': ((-1, 0.80), (0, 1)),
                 'goal': ((0.80, 1), (0, 1)),
                 'obs': ((-1, 1), (-1, 0))
             },
-            'random': {
+            'Random': {
                 'start': ((-1, 1), (-1, 1)),
                 'goal': ((-1, 1), (-1, 1)),
                 'obs': ((-1, 1), (-1, 1))
             }
         }
+        
+        world.possible_problem_types = list(problem_configurations.keys())
 
-        problem_info = problem_configurations[problem]
+        problem_info = problem_configurations[problem.capitalize()]
         world.problem_type = problem
         world.start_constr = problem_info['start']
         world.goal_constr = problem_info['goal']

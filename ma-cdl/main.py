@@ -32,21 +32,21 @@ class MA_CDL2():
         success = 0
         self.create_language()
         
-        for episode in range(self.self.num_episodes):
-            start, goal, obstacles = self.env.unwrapped.get_init_conditions()
-            directions = self.speaker.direct(start, goal, obstacles)
-            obs, _, termination, truncation, _ = self.env.last()
+        # for episode in range(self.self.num_episodes):
+        #     start, goal, obstacles = self.env.unwrapped.get_init_conditions()
+        #     directions = self.speaker.direct(start, goal, obstacles)
+        #     obs, _, termination, truncation, _ = self.env.last()
             
-            while not (termination or truncation):
-                action = self.listener.get_action(obs, goal, directions, self.env)
-                self.env.step(action)
-                obs, _, termination, truncation, _ = self.env.last()
+        #     while not (termination or truncation):
+        #         action = self.listener.get_action(obs, goal, directions, self.env)
+        #         self.env.step(action)
+        #         obs, _, termination, truncation, _ = self.env.last()
             
-            if termination:
-                success += 1
-                print('Mission success!')
-            else:
-                print('Mission failed!')
+        #     if termination:
+        #         success += 1
+        #         print('Mission success!')
+        #     else:
+        #         print('Mission failed!')
         
         return success
     
@@ -79,6 +79,6 @@ class MA_CDL2():
 if __name__ == '__main__':
     args = get_arguments()
     ma_cdl2 = MA_CDL2(args)
-    successes, failures = ma_cdl2.act()
-    ma_cdl2.plot(successes, failures)
+    successes = ma_cdl2.act()
+    # ma_cdl2.plot(successes, failures)
     

@@ -36,15 +36,14 @@ class RRTStar():
     def __init__(self, agent_radius, obstacle_radius):
         self.robot_radius = agent_radius
         self.obstacle_radius = obstacle_radius
-        self.min_rand = -1
-        self.max_rand = 1
+        self.play_area = self.AreaBounds((-1, 1, -1, 1))
+        self.min_rand, self.max_rand = -1, 1
         self.expand_dis = 0.1
         self.path_resolution = 0.05
         self.goal_sample_rate = 25
         self.max_iter = 500
         self.connect_circle_dist = 1
         self.search_until_max_iter = False
-        self.play_area = self.AreaBounds((-1, 1, -1, 1))
         self.node_list = []
 
     def plan(self, start, goal, obstacles, animation=False):
@@ -59,15 +58,11 @@ class RRTStar():
             nearest_ind = self.get_nearest_node_index(self.node_list, rnd)
             new_node = self.steer(self.node_list[nearest_ind], rnd, self.expand_dis)
             near_node = self.node_list[nearest_ind]
-            new_node.cost = near_node.cost + \
-                math.hypot(new_node.x-near_node.x,
-                           new_node.y-near_node.y)
+            new_node.cost = near_node.cost + math.hypot(new_node.x-near_node.x, new_node.y-near_node.y)
 
-            if self.check_collision(
-                    new_node, self.obstacle_list, self.robot_radius):
+            if self.check_collision(new_node, self.obstacle_list, self.robot_radius):
                 near_inds = self.find_near_nodes(new_node)
-                node_with_updated_parent = self.choose_parent(
-                    new_node, near_inds)
+                node_with_updated_parent = self.choose_parent(new_node, near_inds)
                 if node_with_updated_parent:
                     self.rewire(node_with_updated_parent, near_inds)
                     self.node_list.append(node_with_updated_parent)
@@ -77,8 +72,7 @@ class RRTStar():
             if animation:
                 self.draw_graph(rnd)
 
-            if ((not self.search_until_max_iter)
-                    and new_node):  # if reaches goal
+            if ((not self.search_until_max_iter) and new_node):  # if reaches goal
                 last_index = self.search_best_goal_node()
                 if last_index is not None:
                     path = self.generate_final_course(last_index)

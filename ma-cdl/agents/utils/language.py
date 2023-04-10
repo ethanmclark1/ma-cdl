@@ -3,6 +3,7 @@ import time
 import pickle
 import warnings
 import numpy as np
+import sympy as sp
 import matplotlib.pyplot as plt
 
 from math import inf
@@ -18,14 +19,15 @@ weights = np.array((15, 2, 35, 35))
 class Language:
     def __init__(self, env):
         self.env = env
-        self.configs_to_consider = 50
+        self.configs_to_consider = 30
         self.rrt_star = RRTStar(env.metadata['agent_radius'], 
                                 env.metadata['obstacle_radius'])
         self.num_obstacles = env.metadata['num_obstacles']
         self.problem_type = env.unwrapped.world.problem_type
         self.start_constr = env.unwrapped.world.start_constr
         self.goal_constr = env.unwrapped.world.goal_constr
-        self.obs_constr = env.unwrapped.world.obs_constr        
+        self.obs_constr = env.unwrapped.world.obs_constr   
+             
         corners = list(product((1, -1), repeat=2))
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
@@ -48,6 +50,31 @@ class Language:
             regions = pickle.load(f)
         return regions
     
+    # Generate lines based off the coefficients
+    def _get_lines_from_coeffs(self, coeffs, degree=1):
+        lines = []
+        equations = np.reshape(coeffs, (-1, degree+1))
+        
+        x, y = sp.symbols('x y')
+        for equation in equations:  
+            eq = sp.Eq(equation[0]*x + equation[1]*y, 0)
+            y_expr = sp.solve(eq, y)[0]
+            slope = y_expr.as_coefficients_dict()[x]
+            if abs(slope) >= 1:
+                # Find values of y when x = -1, 1
+                solution = sp.solve(eq, y, dict=True)
+                start = (-1, solution[0][y].subs(x, -1))
+                end = (1, solution[0][y].subs(x, 1))
+            else:
+                # Find values of x when y = -1, 1
+                solution = sp.solve(eq, x, dict=True)
+                start = (solution[0][x].subs(y, -1), -1)
+                end = (solution[0][x].subs(y, 1), 1)            
+            lines.append(LineString([start, end]))
+        
+        return lines    
+    
+    # Determine the intersections between lines and the boundary
     def _get_valid_lines(self, lines):
         valid_lines = list(self.boundaries)
 
@@ -69,6 +96,7 @@ class Language:
         regions = [polygons] if polygons.geom_type == 'Polygon' else list(polygons.geoms)
         return regions
     
+    # Gather points under specified constraint
     def _generate_points(self):
         obstacles = []    
         start = np.random.uniform(*zip(*self.start_constr))
@@ -119,9 +147,8 @@ class Language:
         3. Mean of nonnavigable area
         4. Variance of nonnavigable area
     """
-    def _optimizer(self, lines):
-        lines = [LineString([tuple(lines[i:i+2]), tuple(lines[i+2:i+4])]) 
-                 for i in range(0, len(lines), 4)]
+    def _optimizer(self, coeffs):
+        lines = self._get_lines_from_coeffs(coeffs)
         regions = self._create_regions(lines)
         if len(regions) == 0: return inf
         
@@ -145,37 +172,43 @@ class Language:
         return problem_cost
 
     # Minimizes cost function to generate the optimal lines
-    def _generate_optimal_lines(self):
-        lb, ub = -1.25, 1.25
-        optim_val, optim_lines = inf, None
+    def _generate_optimal_coeffs(self):
+        degree = 1
+        lb, ub = -2, 2
+        optim_val, optim_coeffs = inf, None
         start = time.time()
-        for num in range(2, 7):
-            print(f'Generating language with {num} lines...')
-            bounds = [(lb, ub) for _ in range(num*4)]
+        for num in range(1, 2):
+            bounds = [(lb, ub) for _ in range(num*(degree+1))]
             res = optimize.differential_evolution(self._optimizer, bounds,
-                                                  maxiter=500, init='sobol')
-            
+                                                  maxiter=100*num, init='sobol')
             print(f'Cost: {res.fun}')
             if optim_val > res.fun:
                 optim_val = res.fun
-                optim_lines = res.x
+                optim_coeffs = res.x
         
         end = time.time()
         print(f'Elapsed time: {end - start} seconds')
-        optim_lines = np.reshape(optim_lines, (-1, 4))
-        return optim_lines
+        optim_coeffs = np.reshape(optim_coeffs, (-1, degree+1))
+        return optim_coeffs
     
     # Visualize regions that define the language
     def _visualize(self, regions):
         for idx, region in enumerate(regions):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        plt.savefig(f'ma-cdl/agents/utils/stored_langs/{self.problem_type}+{weights}.png')
+            
+        directory = 'ma-cdl/agents/utils/stored_langs'
+        filename = f'{self.problem_type}+{weights}.png'
+        file_path = os.path.join(directory, filename)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+            
+        plt.savefig(file_path)
     
     # Returns regions that defines the language
     def create(self):
-        lines = self._generate_optimal_lines()
-        lines = [LineString([line[0:2], line[2:4]]) for line in lines]
+        coeffs = self._generate_optimal_coeffs()
+        lines = self._get_lines_from_coeffs(coeffs)
         regions = self._create_regions(lines)
         self._visualize(regions)
         self._save(regions)

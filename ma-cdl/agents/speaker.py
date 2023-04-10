@@ -14,3 +14,10 @@ class Speaker(BaseAgent):
         obstacles = [Point(obstacle) for obstacle in obstacles]
         directions = a_star(start_idx, goal_idx, obstacles, self.language)
         return directions
+    
+    """"
+    Baselines
+        1. Discretize environment into GridWorld
+        2. Voronoi Maps
+        3. 
+    """

@@ -21,10 +21,10 @@ class MA_CDL2():
         try:
             language = self.language.load()
         except:
-            print(f'No existing language found for {self.env.unwrapped.world.problem_type} problem type.')
+            print(f'No existing language found for "{self.env.unwrapped.world.problem_type}" problem type.')
             print('Creating new language...')
-            language = self.language.create()
-
+            
+        language = self.language.create()
         self.speaker.set_language(language)
         self.listener.set_language(language)
 

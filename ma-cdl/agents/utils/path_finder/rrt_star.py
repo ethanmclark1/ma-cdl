@@ -38,10 +38,10 @@ class RRTStar():
         self.obstacle_radius = obstacle_radius
         self.min_rand = -1
         self.max_rand = 1
-        self.expand_dis = 0.05
+        self.expand_dis = 0.1
         self.path_resolution = 0.05
         self.goal_sample_rate = 25
-        self.max_iter = 750
+        self.max_iter = 500
         self.connect_circle_dist = 1
         self.search_until_max_iter = False
         self.play_area = self.AreaBounds((-1, 1, -1, 1))

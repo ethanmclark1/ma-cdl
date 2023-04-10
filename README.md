@@ -1,1 +1,1 @@
-# Multi-Agent Context-Dependent Language Learner (MA-CDL2)
+# Multi-Agent Context-Dependent Language Learner

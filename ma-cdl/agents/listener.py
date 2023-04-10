@@ -9,6 +9,7 @@ class Listener(BaseAgent):
     def __init__(self):
         super().__init__()
     
+    # TODO: Listener has own constraints in addition to speaker constraints
     def get_action(self, obs, goal, directions, env):
         min_dist = inf
         actions = np.arange(1, 5)

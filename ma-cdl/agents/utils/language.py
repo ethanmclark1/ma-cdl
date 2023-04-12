@@ -177,7 +177,7 @@ class Language:
         lb, ub = -2, 2
         optim_val, optim_coeffs = inf, None
         start = time.time()
-        for num in range(1, 2):
+        for num in range(1, 7):
             bounds = [(lb, ub) for _ in range(num*(degree+1))]
             res = optimize.differential_evolution(self._optimizer, bounds,
                                                   maxiter=100*num, init='sobol')

@@ -136,7 +136,6 @@ class SimpleEnv(AECEnv):
         ).astype(np.float32)
         
     def get_init_conditions(self):
-        self.reset()
         world = self.unwrapped.world
         start = world.agents[0].state.p_pos
         goal = world.agents[0].goal.state.p_pos

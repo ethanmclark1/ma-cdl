@@ -7,7 +7,7 @@ def get_arguments():
     parser.add_argument('--problem', metavar='PROBLEM', type=str, default='cluster', 
                         choices=['cluster', 'L-shaped', 'vertical', 'horizontal', 'left', 'right', 'up', 'down', 'random'],
                         help='choose problem setup for obstacles {default_val: %(default)s, choices: [%(choices)s]}')
-    parser.add_argument('--render_mode', metavar='RENDER', type=str, default='human', choices=['human', 'rgb_array', 'None'], 
+    parser.add_argument('--render_mode', metavar='RENDER', type=str, default='None', choices=['human', 'rgb_array', 'None'], 
                         help='mode of visualization {default_val: None, choices: [%(choices)s]}')
     args = parser.parse_args()
         

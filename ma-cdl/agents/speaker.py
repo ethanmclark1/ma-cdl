@@ -1,12 +1,6 @@
-import numpy as np
-import networkx as nx
-import matplotlib.pyplot as plt
-
 from shapely import Point
 from agents.utils.base_aqent import BaseAgent
 from agents.utils.path_finder.a_star import a_star
-from scipy.spatial import Voronoi, voronoi_plot_2d, distance
-
 
 class Speaker(BaseAgent):
     def __init__(self):

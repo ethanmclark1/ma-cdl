@@ -21,7 +21,7 @@ class Language:
         self.env = env
         self.configs_to_consider = 30
         self.rrt_star = RRTStar(env.metadata['agent_radius'], 
-                                env.metadata['obstacle_radius'])
+                                env.metadata['obs_radius'])
         self.num_obstacles = env.metadata['num_obstacles']
         self.problem_type = env.unwrapped.world.problem_type
         self.start_constr = env.unwrapped.world.start_constr

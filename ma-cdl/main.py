@@ -61,7 +61,6 @@ class MA_CDL2():
                     direction_len[type].append(10)
                     continue
                 
-                # TODO: Figure out why truncation/termination is persisting through types
                 direction_len[type].append(len(directions))                    
                 self.env.unwrapped.world = copy.deepcopy(backup)
                 obs, _, termination, truncation, _ = self.env.last()
@@ -79,16 +78,17 @@ class MA_CDL2():
                                 
                     if termination:
                         results[type] += 1
-                        termination = False
+                        self.env.terminations['agent_0'] = False
                         break
                     elif truncation:
-                        truncation = False
+                        self.env.truncations['agent_0'] = False
                         break
 
         for type in direction_len:
             direction_len[type] = np.mean(direction_len[type])
         return results, direction_len
     
+    # TODO: Add avg_direction_len to plot
     def plot(self, results, avg_direction_len):
         labels = self.env.unwrapped.world.possible_problem_types
         fig, axes = plt.subplots(1, 2, figsize=(15, 6))

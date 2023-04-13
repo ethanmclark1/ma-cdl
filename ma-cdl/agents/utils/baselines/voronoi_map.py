@@ -18,6 +18,7 @@ class VoronoiMap(BaseAgent):
         start_index = self.voronoi.point_region[0]
         goal_index = self.voronoi.point_region[1]
         
+        # TODO: Fix this to be more reliable
         for ridge_vertices in self.voronoi.ridge_vertices:
             if -1 not in ridge_vertices:  
                 v1, v2 = ridge_vertices
@@ -31,7 +32,7 @@ class VoronoiMap(BaseAgent):
         
         return shortest_path
 
-    def find_voronoi_region(self, observation):        
+    def _find_voronoi_region(self, observation):        
         min_distance = float("inf")
         closest_region = -1
 
@@ -45,14 +46,15 @@ class VoronoiMap(BaseAgent):
     
     def get_action(self, observation, goal, directions, env):
         observation = observation[0:2]
-        obs_region = self.find_voronoi_region(observation)
+        obs_region = self._find_voronoi_region(observation)
         goal_region = directions[-1]
         if obs_region == goal_region:
+            next_region = goal_region
             target = goal
         else:
             next_region = directions[directions.index(obs_region)+1:][0]
             region_idx = np.where(self.voronoi.point_region == next_region)[0][0]
             target = self.voronoi.points[region_idx]
         
-        action = super().get_action(observation, target, env)
+        action = super().get_action(observation, target, env, self._find_voronoi_region)
         return action

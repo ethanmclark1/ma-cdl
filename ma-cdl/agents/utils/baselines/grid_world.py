@@ -39,7 +39,10 @@ class GridWorld(BaseAgent):
         for obstacle in obstacles:
             temp_graph.remove_node(obstacle)
         
-        shortest_path = nx.astar_path(temp_graph, start, goal, weight='weight')
+        try:
+            shortest_path = nx.astar_path(temp_graph, start, goal, weight='weight')
+        except:
+            return None
     
         return shortest_path
     
@@ -48,10 +51,11 @@ class GridWorld(BaseAgent):
         obs_region = self._discretize_state(observation)
         goal_region = self._discretize_state(goal)
         if obs_region == goal_region:
+            next_region = goal_region
             target = goal
         else:
             next_region = directions[directions.index(obs_region)+1:][0]
             target = self._dequantize_state(next_region)
             
-        action = super().get_action(observation, target, env)
+        action = super().get_action(observation, target, env, self._discretize_state)
         return action

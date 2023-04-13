@@ -2,12 +2,12 @@ import copy
 import numpy as np
 
 from math import inf
-from shapely import Point
+from scipy.spatial import distance
 
 class BaseAgent():
     def __init__(self):
         self.language = None
-        self.n_actions = np.arange(1,5)
+        self.n_actions = np.arange(0,5)
         
     def set_language(self, language):
         self.language = language
@@ -20,19 +20,21 @@ class BaseAgent():
         return region_idx    
     
     # 1: Left, 2: Right, 3: Down, 4: Up
-    def get_action(self, observation, target, env):
+    def get_action(self, observation, target, env, region_finder=localize):
         min_dist = inf
         world = env.unwrapped.world
         backup = copy.deepcopy(world)
-        target = Point(target)
+        obs_region = region_finder(observation)
+        target_region = region_finder(target)
         
         for action in self.n_actions:
             env.step(action)
-            observation, _, _, _, _ = env.last()
-            observation = Point(observation[0:2])
-            dist = observation.distance(target)
+            obs, _, _, _, _ = env.last()
+            new_obs = obs[0:2]
+            new_obs_region = region_finder(new_obs)
             
-            if dist < min_dist:
+            dist = distance.euclidean(target, new_obs)
+            if (new_obs_region == obs_region or new_obs_region == target_region) and dist < min_dist:
                 min_dist = dist
                 optimal_action = action
             

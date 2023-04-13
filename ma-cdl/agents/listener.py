@@ -16,11 +16,12 @@ class Listener(BaseAgent):
         obs_region = self.localize(observation)
         goal_region = self.localize(goal)
         if obs_region == goal_region:
+            next_region = goal_region
             target = goal
         else:
             label = directions[directions.index(obs_region)+1:][0]
-            region = self.language[label]
-            target = region.centroid
+            next_region = self.language[label]
+            target = next_region.centroid
         
         action = super().get_action(observation, target, env)
         return action

@@ -6,7 +6,7 @@ from environment.utils.scenario import BaseScenario
 from environment.utils.core import Agent, Landmark, World
 from environment.utils.simple_env import SimpleEnv, make_env
 
-
+# TODO: Figure out parameter passing
 class raw_env(SimpleEnv, EzPickle):
     def __init__(self, args):
         max_cycles = 500

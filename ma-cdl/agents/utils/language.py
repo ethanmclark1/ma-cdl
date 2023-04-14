@@ -11,23 +11,17 @@ from scipy import optimize
 from itertools import product
 from statistics import mean, variance
 from agents.utils.path_finder.rrt_star import RRTStar
+from environment.utils.problems import problem_scenarios
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
-weights = np.array((15, 2, 35, 35))
 
 class Language:
-    def __init__(self, env):
-        self.env = env
+    def __init__(self, agent_radius, obs_radius, num_obstacles):
         self.configs_to_consider = 30
-        self.rrt_star = RRTStar(env.metadata['agent_radius'], 
-                                env.metadata['obs_radius'])
-        self.num_obstacles = env.metadata['num_obstacles']
-        self.problem_type = env.unwrapped.world.problem_type
-        self.start_constr = env.unwrapped.world.start_constr
-        self.goal_constr = env.unwrapped.world.goal_constr
-        self.obs_constr = env.unwrapped.world.obs_constr   
-             
+        self.num_obstacles = num_obstacles
+        self.rrt_star = RRTStar(agent_radius, obs_radius)
+                     
         corners = list(product((1, -1), repeat=2))
         self.square = Polygon([corners[0], corners[2], corners[3], corners[1]])
         self.boundaries = [LineString([corners[0], corners[2]]),
@@ -35,9 +29,9 @@ class Language:
                            LineString([corners[3], corners[1]]),
                            LineString([corners[1], corners[0]])]
         
-    def _save(self, regions):
+    def _save(self, regions, scenario):
         directory = 'ma-cdl/agents/utils/stored_langs'
-        filename = f'{self.problem_type}+{weights}.pkl'
+        filename = f'{scenario}.pkl'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -45,8 +39,11 @@ class Language:
         with open(file_path, 'wb') as file:
             pickle.dump(regions, file)
     
-    def load(self):
-        with open(f'ma-cdl/agents/utils/stored_langs/{self.problem_type}+{weights}.pkl', 'rb') as f:
+    def load(self, language):
+        directory = 'ma-cdl/agents/utils/stored_langs'
+        filename = f'{language}.pkl'
+        file_path = os.path.join(directory, filename)
+        with open(file_path, 'rb') as f:
             regions = pickle.load(f)
         return regions
     
@@ -97,17 +94,21 @@ class Language:
         return regions
     
     # Gather points under specified constraint
-    def _generate_points(self):
+    def _generate_points(self, scenario):
         obstacles = []    
-        start = np.random.uniform(*zip(*self.start_constr))
-        goal = np.random.uniform(*zip(*self.goal_constr))
+        start_constr = problem_scenarios[scenario]['start']
+        goal_constr = problem_scenarios[scenario]['goal']
+        obs_constr = problem_scenarios[scenario]['obs']
+        
+        start = np.random.uniform(*zip(*start_constr))
+        goal = np.random.uniform(*zip(*goal_constr))
         
         # set state of obstacles
-        if isinstance(self.obs_constr, tuple):
-            obstacles = [np.random.uniform(*zip(*self.obs_constr)) for _ in range(self.num_obstacles)]
+        if isinstance(obs_constr, tuple):
+            obstacles = [np.random.uniform(*zip(*obs_constr)) for _ in range(self.num_obstacles)]
         else:
-            obstacles = [np.random.uniform(*zip(*self.obs_constr[0])) for _ in range(self.num_obstacles // 2)]
-            obstacles += [np.random.uniform(*zip(*self.obs_constr[1])) for _ in range(self.num_obstacles // 2)]
+            obstacles = [np.random.uniform(*zip(*obs_constr[0])) for _ in range(self.num_obstacles // 2)]
+            obstacles += [np.random.uniform(*zip(*obs_constr[1])) for _ in range(self.num_obstacles // 2)]
         
         return start, goal, obstacles
     
@@ -147,7 +148,7 @@ class Language:
         3. Mean of nonnavigable area
         4. Variance of nonnavigable area
     """
-    def _optimizer(self, coeffs):
+    def _optimizer(self, coeffs, scenario):
         lines = self._get_lines_from_coeffs(coeffs)
         regions = self._create_regions(lines)
         if len(regions) == 0: return inf
@@ -155,7 +156,7 @@ class Language:
         i = 0
         nonnavigable, unsafe = [], []
         while i < self.configs_to_consider:
-            start, goal, obstacles = self._generate_points()
+            start, goal, obstacles = self._generate_points(scenario)
             config_cost = self._config_cost(start, goal, obstacles, regions)
             if config_cost:
                 nonnavigable.append(config_cost[0])
@@ -168,18 +169,19 @@ class Language:
         nonnavigable_var = variance(nonnavigable)
         
         criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
+        weights = np.array((15, 2, 35, 35))
         problem_cost = np.sum(criterion * weights)
         return problem_cost
 
     # Minimizes cost function to generate the optimal lines
-    def _generate_optimal_coeffs(self):
+    def _generate_optimal_coeffs(self, scenario):
         degree = 1
         lb, ub = -2, 2
         optim_val, optim_coeffs = inf, None
         start = time.time()
         for num in range(1, 7):
             bounds = [(lb, ub) for _ in range(num*(degree+1))]
-            res = optimize.differential_evolution(self._optimizer, bounds,
+            res = optimize.differential_evolution(self._optimizer, bounds, args=(scenario,),
                                                   maxiter=100*num, init='sobol')
             print(f'Cost: {res.fun}')
             if optim_val > res.fun:
@@ -192,24 +194,27 @@ class Language:
         return optim_coeffs
     
     # Visualize regions that define the language
-    def _visualize(self, regions):
+    def _visualize(self, regions, scenario):
         for idx, region in enumerate(regions):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
             
         directory = 'ma-cdl/agents/utils/stored_langs'
-        filename = f'{self.problem_type}+{weights}.png'
+        filename = f'{scenario}.png'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
             
         plt.savefig(file_path)
+        plt.cla()
+        plt.clf()
+        plt.close('all')
     
     # Returns regions that defines the language
-    def create(self):
-        coeffs = self._generate_optimal_coeffs()
+    def create(self, scenario):
+        coeffs = self._generate_optimal_coeffs(scenario)
         lines = self._get_lines_from_coeffs(coeffs)
         regions = self._create_regions(lines)
-        self._visualize(regions)
-        self._save(regions)
+        self._visualize(regions, scenario)
+        self._save(regions, scenario)
         return regions

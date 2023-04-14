@@ -3,10 +3,10 @@ import numpy as np
 
 from gymnasium.utils import EzPickle
 from environment.utils.scenario import BaseScenario
+from environment.utils.problems import problem_scenarios
 from environment.utils.core import Agent, Landmark, World
 from environment.utils.simple_env import SimpleEnv, make_env
 
-# TODO: Figure out parameter passing
 class raw_env(SimpleEnv, EzPickle):
     def __init__(self, args):
         max_cycles = 500
@@ -87,59 +87,10 @@ class Scenario(BaseScenario):
     def observation(self, agent, world):
         return np.concatenate((agent.state.p_pos, agent.state.p_vel))
     
-    def get_problem_scenario(self, world, problem_name):
-        problem_scenarios = {
-            'cluster': {
-                'start': ((-1, -0.80), (-0.25, 0.25)),
-                'goal': ((0.80, 1), (-0.25, 0.25)),
-                'obs': ((-0.15, 0.15), (-0.15, 0.15))
-            },
-            'L-shaped': {
-                'start': ((-1, -0.80), (-0.25, 0.25)),
-                'goal': ((0.4, 0.6), (0.4, 0.6)),
-                'obs': [((-0.1, 0.1), (0, 0.6)), ((0.1, 0.5), (0, 0.25))]
-            },
-            'vertical': {
-                'start': ((-1, -0.80), (-1, 1)),
-                'goal': ((0.80, 1), (-1, 1)),
-                'obs': ((-0.075, 0.075), (-0.6, 0.6))
-            },
-            'horizontal': {
-                'start': ((-1, 1), (-1, -0.80)),
-                'goal': ((-1, 1), (0.80, 1)),
-                'obs': ((-0.6, 0.6), (-0.075, 0.75))
-            },
-            'left': {
-                'start': ((0, 1), (-1, -0.80)),
-                'goal': ((0, 1), (0.80, 1)),
-                'obs': ((-1, 0), (-1, 1))
-            },
-            'right': {
-                'start': ((-1, 0), (-1, -0.80)),
-                'goal': ((-1, 0), (0.80, 1)),
-                'obs': ((0, 1), (-1, 1))
-            },
-            'up': {
-                'start': ((-1, 0.80), (-1, 0)),
-                'goal': ((0.80, 1), (-1, 0)),
-                'obs': ((-1, 1), (0, 1))
-            },
-            'down': {
-                'start': ((-1, 0.80), (0, 1)),
-                'goal': ((0.80, 1), (0, 1)),
-                'obs': ((-1, 1), (-1, 0))
-            },
-            'random': {
-                'start': ((-1, 1), (-1, 1)),
-                'goal': ((-1, 1), (-1, 1)),
-                'obs': ((-1, 1), (-1, 1))
-            }
-        }
-        
+    def get_problem_scenario(self, world, problem_name):        
         world.possible_problem_scenarios = list(problem_scenarios.keys())
-
-        problem_name = problem_scenarios[problem_name]
-        world.problem_type = problem_name
-        world.start_constr = problem_name['start']
-        world.goal_constr = problem_name['goal']
-        world.obs_constr = problem_name['obs']
+        
+        world.problem_name = problem_name
+        world.start_constr = problem_scenarios[problem_name]['start']
+        world.goal_constr = problem_scenarios[problem_name]['goal']
+        world.obs_constr = problem_scenarios[problem_name]['obs']

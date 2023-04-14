@@ -13,37 +13,41 @@ from agents.utils.baselines.voronoi_map import VoronoiMap
 
 class MA_CDL2():
     def __init__(self, args):
-        self.num_episodes = 1
+        self.num_episodes = 10
         self.env = simple_path.env(args)
-        self.language = Language(self.env)
         self.speaker = Speaker()
         self.listener = Listener()
+        self.language = Language(self.env.metadata['agent_radius'], 
+                                 self.env.metadata['obs_radius'], 
+                                 self.env.metadata['num_obstacles'])
         self.grid_world = GridWorld()
         self.voronoi_map = VoronoiMap()
         self.problem_scenarios = self.env.unwrapped.world.possible_problem_scenarios
     
     # Passes language to both speaker and listener
-    def create_language(self):
+    def set_language(self, scenario):
         try:
-            language = self.language.load()
+            language = self.language.load(scenario)
         except:
-            print(f'No existing language found for "{self.env.unwrapped.world.problem_type}" problem type.')
+            print(f'No existing language found for "{scenario}" problem type.')
             print('Creating new language...')
             
-        language = self.language.create()
+        language = self.language.create(scenario)
         self.speaker.set_language(language)
         self.listener.set_language(language)
 
     def act(self):
         # approaches = ['language', 'grid_world', 'voronoi_map']
         # approaches = ['grid_world', 'voronoi_map']
+        # approaches = ['voronoi_map']
         approaches = ['grid_world']
         direction_set = {approach: None for approach in approaches}
         direction_len = {approach: {scenario: [] for scenario in self.problem_scenarios} for approach in approaches}
         results = {approach: {scenario: 0 for scenario in self.problem_scenarios} for approach in approaches}
         
-        # self.create_language()
         for _, scenario in product(range(self.num_episodes), self.problem_scenarios):
+            # self.set_language(scenario)
+            
             self.env.reset(options={'problem_name': scenario})
             start, goal, obstacles = self.env.unwrapped.get_init_conditions()
             
@@ -59,6 +63,7 @@ class MA_CDL2():
                 if directions is None:
                     continue
                 
+                action_set = []
                 direction_len[approach][scenario].append(len(directions))
                 self.env.unwrapped.world = copy.deepcopy(backup)
                 obs, _, termination, truncation, _ = self.env.last()
@@ -70,6 +75,11 @@ class MA_CDL2():
                         action = self.grid_world.get_action(obs, goal, directions, self.env)
                     elif approach == 'voronoi_map':
                         action = self.voronoi_map.get_action(obs, goal, directions, self.env)
+                        action_set.append(action)
+                    
+                    # No action can adhere to the directions
+                    if action is None:
+                        break
                         
                     self.env.step(action)
                     obs, _, termination, truncation, _ = self.env.last()
@@ -85,7 +95,7 @@ class MA_CDL2():
         avg_direction_len = {approach: {scenario: np.mean(values) for scenario, values in scenario_dict.items()} 
                          for approach, scenario_dict in direction_len.items()}
         return results, avg_direction_len
-
+    
     def plot(self, results, avg_direction_len):        
         # Create the first figure for success rates
         fig1, axes1 = plt.subplots(1, 2, figsize=(15, 6))
@@ -103,12 +113,10 @@ class MA_CDL2():
             end = start + group_size if i < num_iterations - 1 else num_labels
             _labels = self.problem_scenarios[start:end]
             
-            _cdl_results = results['language'][start:end]
-            _cdl_direction_len = avg_direction_len['language'][start:end]
-            _grid_world_results = results['grid_world'][start:end]
-            _grid_world_direction_len = avg_direction_len['grid_world'][start:end]
-            _voronoi_map_results = results['voronoi_map'][start:end]
-            _voronoi_map_direction_len = avg_direction_len['voronoi_map'][start:end]
+            _cdl_results = list(results['language'].values())[start:end]
+            _grid_world_results = list(results['grid_world'].values())[start:end]
+            _voronoi_map_results = list(results['voronoi_map'].values())[start:end]
+
 
             # Plot the success rate graphs
             axes1[i].bar(np.arange(len(_labels)) - 0.2, _cdl_results, width=0.2, label='Context-Dependent Language')
@@ -121,6 +129,10 @@ class MA_CDL2():
             axes1[i].set_ylim(0, 100)
             axes1[i].legend()
 
+            _cdl_direction_len = list(avg_direction_len['language'].values())[start:end]
+            _grid_world_direction_len = list(avg_direction_len['grid_world'].values())[start:end]
+            _voronoi_map_direction_len = list(avg_direction_len['voronoi_map'].values())[start:end]
+            
             # Plot the average direction length graphs
             axes2[i].bar(np.arange(len(_labels)) - 0.2, _cdl_direction_len, width=0.2, label='Context-Dependent Language')
             axes2[i].bar(np.arange(len(_labels)), _grid_world_direction_len, width=0.2, label='Grid World')

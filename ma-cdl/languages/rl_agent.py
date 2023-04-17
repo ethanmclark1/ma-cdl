@@ -1,4 +1,4 @@
-from language.utils.cdl import CDL
+from languages.utils.cdl import CDL
 
 class RLAgent(CDL):
     def __init__(self, agent_radius, obs_radius, num_obstacles):

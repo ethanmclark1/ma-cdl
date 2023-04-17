@@ -6,14 +6,14 @@ import sympy as sp
 import matplotlib.pyplot as plt
 
 from itertools import product
-from language.utils.a_star import a_star
-from language.utils.rrt_star import RRTStar
+from languages.utils.a_star import a_star
+from languages.utils.rrt_star import RRTStar
 from environment.utils.problems import problem_scenarios
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
 
-""""Base file for Context-Dependent Languages (CDL)"""
+""""Base file for Context-Dependent Languages (EA & RLAgent)"""
 class CDL:
     def __init__(self, agent_radius, obs_radius, num_obstacles):
         self.language = None

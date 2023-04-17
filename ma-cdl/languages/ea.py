@@ -6,7 +6,7 @@ from scipy import optimize
 from shapely.geometry import Point
 from statistics import mean, variance
 
-from language.utils.cdl import CDL
+from languages.utils.cdl import CDL
 
 """
 Evolutionary Algorithm for generating a language

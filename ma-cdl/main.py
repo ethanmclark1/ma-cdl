@@ -4,56 +4,47 @@ import matplotlib.pyplot as plt
 
 from itertools import product
 from arguments import get_arguments
+
 from environment import simple_path
+from environment.utils.problems import problem_scenarios
+
 from agents.speaker import Speaker
 from agents.listener import Listener
-from agents.utils.language import Language
-from agents.utils.baselines.grid_world import GridWorld
-from agents.utils.baselines.voronoi_map import VoronoiMap
+
+from language.ea import EA
+from language.rl_agent import RLAgent
+from language.grid_world import GridWorld
 
 class MA_CDL2():
     def __init__(self, args):
         self.num_episodes = 10
         self.env = simple_path.env(args)
+        
+        obs_radius = self.env.metadata['obs_radius']
+        num_obs = self.env.metadata['num_obstacles']
+        agent_radius = self.env.metadata['agent_radius']
+        
         self.speaker = Speaker()
         self.listener = Listener()
-        self.language = Language(self.env.metadata['agent_radius'], 
-                                 self.env.metadata['obs_radius'], 
-                                 self.env.metadata['num_obstacles'])
-        self.grid_world = GridWorld()
-        self.voronoi_map = VoronoiMap()
-        self.problem_scenarios = self.env.unwrapped.world.possible_problem_scenarios
-    
-    # Passes language to both speaker and listener
-    def set_language(self, scenario):
-        try:
-            language = self.language.load(scenario)
-        except:
-            print(f'No existing language found for "{scenario}" problem type.')
-            print('Creating new language...')
-            
-        language = self.language.create(scenario)
-        self.speaker.set_language(language)
-        self.listener.set_language(language)
+        self.grid_world = GridWorld()        
+        self.ea = EA(agent_radius, obs_radius, num_obs)
+        self.rl_agent = RLAgent(agent_radius, obs_radius, num_obs)
 
     def act(self):
-        # approaches = ['language', 'grid_world', 'voronoi_map']
-        # approaches = ['grid_world', 'voronoi_map']
-        # approaches = ['voronoi_map']
         approaches = ['grid_world']
         direction_set = {approach: None for approach in approaches}
-        direction_len = {approach: {scenario: [] for scenario in self.problem_scenarios} for approach in approaches}
-        results = {approach: {scenario: 0 for scenario in self.problem_scenarios} for approach in approaches}
+        direction_len = {approach: {scenario: [] for scenario in problem_scenarios} for approach in approaches}
+        results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
         
-        for _, scenario in product(range(self.num_episodes), self.problem_scenarios):
-            # self.set_language(scenario)
-            
+        for _, scenario in product(range(self.num_episodes), problem_scenarios):
             self.env.reset(options={'problem_name': scenario})
+            
+            # self.ea.get_language(scenario)
+            self.rl_agent.get_language(scenario)
+            
             start, goal, obstacles = self.env.unwrapped.get_init_conditions()
             
-            # direction_set['language'] = self.speaker.direct(start, goal, obstacles)
             direction_set['grid_world'] = self.grid_world.direct(start, goal, obstacles)
-            # direction_set['voronoi_map'] = self.voronoi_map.direct(start, goal, obstacles)
                         
             world = self.env.unwrapped.world
             backup = copy.deepcopy(world)
@@ -63,19 +54,13 @@ class MA_CDL2():
                 if directions is None:
                     continue
                 
-                action_set = []
                 direction_len[approach][scenario].append(len(directions))
                 self.env.unwrapped.world = copy.deepcopy(backup)
                 obs, _, termination, truncation, _ = self.env.last()
 
                 while not (termination or truncation):
-                    if approach == 'listener':
-                        action = self.listener.get_action(obs, goal, directions, self.env)
-                    elif approach == 'grid_world':
+                    if approach == 'grid_world':
                         action = self.grid_world.get_action(obs, goal, directions, self.env)
-                    elif approach == 'voronoi_map':
-                        action = self.voronoi_map.get_action(obs, goal, directions, self.env)
-                        action_set.append(action)
                     
                     # No action can adhere to the directions
                     if action is None:
@@ -116,7 +101,6 @@ class MA_CDL2():
             _cdl_results = list(results['language'].values())[start:end]
             _grid_world_results = list(results['grid_world'].values())[start:end]
             _voronoi_map_results = list(results['voronoi_map'].values())[start:end]
-
 
             # Plot the success rate graphs
             axes1[i].bar(np.arange(len(_labels)) - 0.2, _cdl_results, width=0.2, label='Context-Dependent Language')

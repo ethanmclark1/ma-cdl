@@ -1,14 +1,7 @@
-from shapely import Point
-from agents.utils.base_aqent import BaseAgent
-from agents.utils.path_finder.a_star import a_star
-
-class Speaker(BaseAgent):
+class Speaker():
     def __init__(self):
-        super().__init__()
+        a=3
         
-    def direct(self, start_pos, goal_pos, obstacles):
-        start_idx = self.localize(Point(start_pos))
-        goal_idx = self.localize(Point(goal_pos))
-        obstacles = [Point(obstacle) for obstacle in obstacles]
-        directions = a_star(start_idx, goal_idx, obstacles, self.language)
+    def direct(self, start_pos, goal_pos, obstacles, gather_directions):
+        directions = gather_directions(start_pos, goal_pos, obstacles)
         return directions

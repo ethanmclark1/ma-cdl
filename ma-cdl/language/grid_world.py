@@ -1,12 +1,12 @@
 import numpy as np
 import networkx as nx
 
-from agents.utils.base_aqent import BaseAgent
-
-# GridWorld is inexpressive
-class GridWorld(BaseAgent):
+"""
+GridWorld for generating a language
+** Not expressive **
+"""
+class GridWorld:
     def __init__(self, state_ranges=((-1, 1), (-1, 1)), n_bins=(5, 5)):
-        super().__init__()
         self.state_ranges = state_ranges
         self.n_bins = n_bins
         self.graph = nx.grid_graph(n_bins, periodic=False)
@@ -46,8 +46,7 @@ class GridWorld(BaseAgent):
     
         return shortest_path
     
-    def get_action(self, observation, goal, directions, env):
-        observation = observation[0:2]
+    def find_target(self, observation, goal, directions):
         obs_region = self._discretize_state(observation)
         goal_region = self._discretize_state(goal)
         if obs_region == goal_region:
@@ -57,5 +56,4 @@ class GridWorld(BaseAgent):
             next_region = directions[directions.index(obs_region)+1:][0]
             target = self._dequantize_state(next_region)
             
-        action = super().get_action(observation, target, env, self._discretize_state)
-        return action
+        return target

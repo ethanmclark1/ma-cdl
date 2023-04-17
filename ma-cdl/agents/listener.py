@@ -3,15 +3,22 @@ import numpy as np
 from shapely import Point
 from agents.utils.base_aqent import BaseAgent
 
+from language.ea import EA
+from language.rl_agent import RLAgent
+from language.grid_world import GridWorld
+
 class Listener(BaseAgent):
     def __init__(self):
         super().__init__()
         self.actions = np.arange(1,5)
-            
+        
     # TODO: Implement Listener's constraints
-    def get_action(self, observation, goal, directions, env):
-        observation = Point(observation[0:2])
-        goal = Point(goal)    
+    def _generate_constraints(self):
+        a=3
+            
+    def get_action(self, observation, goal, directions, find_target, env):
+        observation = observation[0:2]
+        target = find_target(observation, goal, directions)
         
         obs_region = self.localize(observation)
         goal_region = self.localize(goal)

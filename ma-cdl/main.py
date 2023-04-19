@@ -11,8 +11,8 @@ from agents.listener import Listener
 from environment import simple_path
 from environment.utils.problems import problem_scenarios
 
-from languages.ea import EA
 from languages.td3 import TD3
+from languages.evolutionary_algo import EA
 from languages.grid_world import GridWorld
 
 class MA_CDL2():

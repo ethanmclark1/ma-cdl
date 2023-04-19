@@ -5,18 +5,22 @@ import numpy as np
 import sympy as sp
 import matplotlib.pyplot as plt
 
+from math import inf
 from itertools import product
-from languages.utils.a_star import a_star
+from statistics import mean, variance
 from languages.utils.rrt_star import RRTStar
 from environment.utils.problems import problem_scenarios
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
 
-""""Base file for Context-Dependent Languages (EA & RLAgent)"""
+""""Base file for Context-Dependent Languages (EA & TD3)"""
 class CDL:
     def __init__(self, agent_radius, obs_radius, num_obstacles):
         self.language = None
+        self.configs_to_consider = 30
+        self.agent_radius = agent_radius
+        self.obs_radius = obs_radius
         self.num_obstacles = num_obstacles
         corners = list(product((1, -1), repeat=2))
         self.rrt_star = RRTStar(agent_radius, obs_radius)
@@ -44,7 +48,7 @@ class CDL:
             language = pickle.load(f)
         self.language = language
         
-    # Generate lines based off the coefficients
+    # Generate lines from the coefficients
     def _get_lines_from_coeffs(self, coeffs, degree=1):
         lines = []
         equations = np.reshape(coeffs, (-1, degree+1))
@@ -90,7 +94,7 @@ class CDL:
         regions = [polygons] if polygons.geom_type == 'Polygon' else list(polygons.geoms)
         return regions 
     
-    # Gather points under specified constraint
+    # Generate points under specified constraint
     def _generate_points(self, scenario):
         obstacles = []    
         start_constr = problem_scenarios[scenario]['start']
@@ -109,8 +113,75 @@ class CDL:
         
         return start, goal, obstacles
     
+    """
+    Calculate cost of a configuration (i.e. start, goal, and obstacles)
+    with respect to the regions and positions under some positional constraints: 
+        1. Unsafe area caused by obstacles
+        2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
+    """
+    def _config_cost(self, start, goal, obstacles, regions):
+        obstacles_idx = set(idx for idx, region in enumerate(regions)
+                            for obs in obstacles if region.contains(Point(obs)))
+        nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
+        
+        path = self.rrt_star.plan(start, goal, obstacles)
+        if path is None: return None
+
+        unsafe = 0
+        num_path_checks = 15
+        path_length = len(path)
+        significand = path_length // num_path_checks
+        
+        for idx in range(num_path_checks):
+            path_point = path[idx * significand]
+            for region_idx, region in enumerate(regions):
+                if region.contains(Point(path_point)) and region_idx in obstacles_idx:
+                    unsafe += 1
+                    break
+
+        return nonnavigable, unsafe
+    
+    """ 
+    Calculate cost of a given problem (i.e. all configurations) 
+    with respect to the regions and the given positional constraints: 
+        1. Unsafe plans
+        2. Language efficiency
+        3. Mean of nonnavigable area
+        4. Variance of nonnavigable area
+    """
+    def _optimizer(self, coeffs, scenario):
+        lines = self._get_lines_from_coeffs(coeffs)
+        regions = self._create_regions(lines)
+        if len(regions) == 0: return inf
+        
+        i = 0
+        nonnavigable, unsafe = [], []
+        while i < self.configs_to_consider:
+            start, goal, obstacles = self._generate_points(scenario)
+            config_cost = self._config_cost(start, goal, obstacles, regions)
+            if config_cost:
+                nonnavigable.append(config_cost[0])
+                unsafe.append(config_cost[1])
+                i += 1
+        
+        unsafe = sum(unsafe)
+        efficiency = len(regions)
+        nonnavigable_mu = mean(nonnavigable)
+        nonnavigable_var = variance(nonnavigable)
+        
+        criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
+        weights = np.array((12, 2, 25, 25))
+        problem_cost = np.sum(criterion * weights)
+        return problem_cost
+    
     def _generate_optimal_coeffs(self, scenario):
         raise NotImplementedError
+    
+    def visualize(self, language):
+        for idx, region in enumerate(language):
+            plt.fill(*region.exterior.xy)
+            plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
+        plt.show()
     
     # Visualize regions that define the language
     def _visualize(self, class_name, scenario):
@@ -144,21 +215,7 @@ class CDL:
         
         self._visualize(class_name, scenario)
     
-    """Generate directions"""
-    # Find the region that contains the given position
-    def localize(self, pos):
-        try:
-            region_idx = list(map(lambda region: region.contains(pos), self.language)).index(True)
-        except:
-            region_idx = None
-        return region_idx    
-    
-    def direct(self, start_pos, goal_pos, obstacles):
-        start_idx = self.localize(Point(start_pos))
-        goal_idx = self.localize(Point(goal_pos))
-        obstacles = [Point(obs) for obs in obstacles]
-        directions = a_star(start_idx, goal_idx, obstacles, self.language)
-        return directions
+
     
     """Take actions according to directions"""
     # Find point for listener agent to move to next

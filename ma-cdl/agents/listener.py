@@ -1,11 +1,6 @@
 import numpy as np
 
-from shapely import Point
 from agents.utils.base_aqent import BaseAgent
-
-from language.ea import EA
-from language.rl_agent import RLAgent
-from language.grid_world import GridWorld
 
 class Listener(BaseAgent):
     def __init__(self):

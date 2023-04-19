@@ -5,15 +5,15 @@ import matplotlib.pyplot as plt
 from itertools import product
 from arguments import get_arguments
 
-from environment import simple_path
-from environment.utils.problems import problem_scenarios
-
 from agents.speaker import Speaker
 from agents.listener import Listener
 
-from language.ea import EA
-from language.rl_agent import RLAgent
-from language.grid_world import GridWorld
+from environment import simple_path
+from environment.utils.problems import problem_scenarios
+
+from languages.ea import EA
+from languages.td3 import TD3
+from languages.grid_world import GridWorld
 
 class MA_CDL2():
     def __init__(self, args):
@@ -28,10 +28,10 @@ class MA_CDL2():
         self.listener = Listener()
         self.grid_world = GridWorld()        
         self.ea = EA(agent_radius, obs_radius, num_obs)
-        self.rl_agent = RLAgent(agent_radius, obs_radius, num_obs)
+        self.td3 = TD3(agent_radius, obs_radius, num_obs)
 
     def act(self):
-        approaches = ['grid_world']
+        approaches = ['ea', 'td3', 'grid_world']
         direction_set = {approach: None for approach in approaches}
         direction_len = {approach: {scenario: [] for scenario in problem_scenarios} for approach in approaches}
         results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
@@ -40,7 +40,7 @@ class MA_CDL2():
             self.env.reset(options={'problem_name': scenario})
             
             # self.ea.get_language(scenario)
-            self.rl_agent.get_language(scenario)
+            self.td3.get_language(scenario)
             
             start, goal, obstacles = self.env.unwrapped.get_init_conditions()
             

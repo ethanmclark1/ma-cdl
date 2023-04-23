@@ -49,13 +49,14 @@ class CDL:
         self.language = language
         
     # Generate lines from the coefficients
-    def _get_lines_from_coeffs(self, coeffs, degree=1):
+    # Line in standard form: Ax + By + C = 0
+    def _get_lines_from_coeffs(self, coeffs):
         lines = []
-        equations = np.reshape(coeffs, (-1, degree+1))
+        equations = np.reshape(coeffs, (-1, 3))
         
         x, y = sp.symbols('x y')
         for equation in equations:  
-            eq = sp.Eq(equation[0]*x + equation[1]*y, 0)
+            eq = sp.Eq(equation[0]*x + equation[1]*y + equation[2], 0)
             y_expr = sp.solve(eq, y)[0]
             slope = y_expr.as_coefficients_dict()[x]
             if abs(slope) >= 1:
@@ -72,7 +73,7 @@ class CDL:
         
         return lines   
     
-    # Determine the intersections between lines and the boundary
+    # Find the intersections between lines and the environment boundary
     def _get_valid_lines(self, lines):
         valid_lines = list(self.boundaries)
 
@@ -176,12 +177,6 @@ class CDL:
     
     def _generate_optimal_coeffs(self, scenario):
         raise NotImplementedError
-    
-    def visualize(self, language):
-        for idx, region in enumerate(language):
-            plt.fill(*region.exterior.xy)
-            plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        plt.show()
     
     # Visualize regions that define the language
     def _visualize(self, class_name, scenario):

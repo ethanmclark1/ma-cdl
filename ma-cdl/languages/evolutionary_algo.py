@@ -16,7 +16,7 @@ class EA(CDL):
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_coeffs(self, scenario):
         degree = 1
-        lb, ub = -2, 2
+        lb, ub = -1, 1
         optim_val, optim_coeffs = inf, None
         start = time.time()
         for num in range(1, 7):

@@ -6,7 +6,7 @@ class Speaker(BaseAgent):
     def __init__(self):
         super().__init__()
         
-    def cdl_direct(self, start_pos, goal_pos, obstacles):
+    def direct(self, start_pos, goal_pos, obstacles):
         start_idx = self.localize(Point(start_pos))
         goal_idx = self.localize(Point(goal_pos))
         obstacles = [Point(obs) for obs in obstacles]

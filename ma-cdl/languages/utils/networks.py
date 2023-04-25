@@ -45,7 +45,8 @@ class Critic(nn.Module):
         x2 = self.l6(x2)
         return x1, x2
     
-    def get_Q(self, x, u):
+    # More efficient to only compute Q1
+    def get_Q1(self, x, u):
         xu = torch.cat([x, u], 1)
         x1 = F.relu(self.l1(xu))
         x1 = F.relu(self.l2(x1))

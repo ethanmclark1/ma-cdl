@@ -1,5 +1,4 @@
 import os
-import pickle
 import warnings
 import numpy as np
 import sympy as sp
@@ -30,23 +29,11 @@ class CDL:
                            LineString([corners[3], corners[1]]),
                            LineString([corners[1], corners[0]])]
         
-    def _save(self, class_name, scenario):
-        directory = 'ma-cdl/language/history'
-        filename = f'{class_name}-{scenario}.pkl'
-        file_path = os.path.join(directory, filename)
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-        with open(file_path, 'wb') as file:
-            pickle.dump(self.language, file)
+    def _save(self):
+        raise NotImplementedError
     
-    def _load(self, class_name, scenario):
-        directory = 'ma-cdl/language/history'
-        filename = f'{class_name}-{scenario}.pkl'
-        file_path = os.path.join(directory, filename)
-        with open(file_path, 'rb') as f:
-            language = pickle.load(f)
-        self.language = language
+    def _load(self):
+        raise NotImplementedError
         
     # Generate lines from the coefficients
     # Line in standard form: Ax + By + C = 0
@@ -150,7 +137,7 @@ class CDL:
         3. Mean of nonnavigable area
         4. Variance of nonnavigable area
     """
-    def _optimizer(self, coeffs, scenario):
+    def _optimizer(self, coeffs, scenario, weights=np.array([12, 2, 25, 25])):
         lines = self._get_lines_from_coeffs(coeffs)
         regions = self._create_regions(lines)
         if len(regions) == 0: return inf
@@ -171,12 +158,8 @@ class CDL:
         nonnavigable_var = variance(nonnavigable)
         
         criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
-        weights = np.array((12, 2, 25, 25))
         problem_cost = np.sum(criterion * weights)
-        return problem_cost
-    
-    def _generate_optimal_coeffs(self, scenario):
-        raise NotImplementedError
+        return problem_cost, regions
     
     # Visualize regions that define the language
     def _visualize(self, class_name, scenario):
@@ -195,34 +178,5 @@ class CDL:
         plt.clf()
         plt.close('all')
     
-    # Returns regions that defines the language
-    def get_language(self, scenario):
-        class_name = self.__class__.__name__
-        try:
-            self._load(class_name, scenario)
-        except:
-            print(f'No stored {class_name} language for {scenario} problem.')
-            print('Generating new language...')
-            coeffs = self._generate_optimal_coeffs(scenario)
-            lines = self._get_lines_from_coeffs(coeffs)
-            self.language = self._create_regions(lines)
-            self._save(class_name, scenario)
-        
-        self._visualize(class_name, scenario)
-    
-
-    
-    """Take actions according to directions"""
-    # Find point for listener agent to move to next
-    def find_target(self, observation, goal, directions):
-        obs_region = self.localize(observation)
-        goal_region = self.localize(goal)
-        if obs_region == goal_region:
-            next_region = goal_region
-            target = goal
-        else:
-            label = directions[directions.index(obs_region)+1:][0]
-            next_region = self.language[label]
-            target = next_region.centroid
-        
-        return target
+    def get_language(self):
+        raise NotImplementedError

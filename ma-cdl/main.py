@@ -14,6 +14,7 @@ from environment.utils.problems import problem_scenarios
 from languages.td3 import TD3
 from languages.evolutionary_algo import EA
 from languages.grid_world import GridWorld
+from languages.bandit import MultiArmedBandit
 
 class MA_CDL2():
     def __init__(self, args):
@@ -29,6 +30,7 @@ class MA_CDL2():
         self.grid_world = GridWorld()        
         self.ea = EA(agent_radius, obs_radius, num_obs)
         self.td3 = TD3(agent_radius, obs_radius, num_obs)
+        self.bandit = MultiArmedBandit(agent_radius, obs_radius, num_obs)
 
     def act(self):
         approaches = ['ea', 'td3', 'grid_world']
@@ -36,12 +38,12 @@ class MA_CDL2():
         direction_len = {approach: {scenario: [] for scenario in problem_scenarios} for approach in approaches}
         results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
         
+        self.td3.set_model()
         for _, scenario in product(range(self.num_episodes), problem_scenarios):
-            self.env.reset(options={'problem_name': scenario})
-            
-            # self.ea.get_language(scenario)
+            self.ea.get_language(scenario)
             self.td3.get_language(scenario)
             
+            self.env.reset(options={'problem_name': scenario})
             start, goal, obstacles = self.env.unwrapped.get_init_conditions()
             
             direction_set['grid_world'] = self.grid_world.direct(start, goal, obstacles)

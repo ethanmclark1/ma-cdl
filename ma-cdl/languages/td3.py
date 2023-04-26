@@ -9,13 +9,14 @@ License: MIT License
 """
 
 import os
+import io
 import copy
-# import wandb
+import wandb
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-from itertools import chain
+from PIL import Image
 from torch.optim import Adam
 from torch.nn.functional import mse_loss
 from languages.utils.cdl import CDL
@@ -24,24 +25,18 @@ from languages.utils.replay_buffer import ReplayBuffer
 from sklearn.preprocessing import OneHotEncoder
 from environment.utils.problems import problem_scenarios
 
-TAU = 0.005
-BATCH_SIZE = 100
-NUM_DUMMY = 2.5e5
-NUM_EPISODES = 750
-NUM_ITERATIONS = 100
-PENALTY_THRES = -100
-POLICY_UPDATE_FREQ = 2
+wandb.init(project='td3', entity='ethanmclark1')
 
-# wandb.init(project='td3', entity='ethanmclark1')
-
-# config = wandb.config
-# config.tau = TAU
-# config.batch_size = BATCH_SIZE
-# config.num_dummy = NUM_DUMMY
-# config.num_episodes = NUM_EPISODES
-# config.num_iterations = NUM_ITERATIONS
-# config.penalty_thres = PENALTY_THRES
-# config.policy_update_freq = POLICY_UPDATE_FREQ
+config = wandb.config
+config.tau = TAU = 0.005
+config.batch_size = BATCH_SIZE = 64
+config.num_dummy = NUM_DUMMY = 250000
+config.num_episodes = NUM_EPISODES = 75000
+config.penalty_thres = PENALTY_THRES = -6
+config.num_iterations = NUM_ITERATIONS = 100
+config.policy_update_freq = POLICY_UPDATE_FREQ = 2
+config.weights = WEIGHTS = np.array([1, 1, 1.25, 1, 1])
+config.replay_buffer_size = REPLAY_BUFFER_SIZE = 1000000
 
 """ Twin Delayed Deep Deterministic Policy Gradient (TD3) """
 class TD3(CDL):
@@ -49,14 +44,12 @@ class TD3(CDL):
         super().__init__(agent_radius, obs_radius, num_obstacles)
         self.encoder = OneHotEncoder()
         self.rng = np.random.default_rng()
-        self.replay_buffer = ReplayBuffer()
+        self.replay_buffer = ReplayBuffer(size=REPLAY_BUFFER_SIZE)
         scenarios = np.array(list(problem_scenarios.keys())).reshape(-1, 1)
         self.encoded_scenarios = self.encoder.fit_transform(scenarios).toarray()
         
         self.max_action = 1
         self.action_dim = 18
-        # TODO: Choose weights better
-        self.weights = np.array([12, 10, 25, 25]) # weights on penalty function
         state_dim = self.encoded_scenarios.shape[1] + len(self.square.exterior.coords) * len(self.square.exterior.coords[0])
         self.actor = Actor(state_dim, self.action_dim, self.max_action)
         self.actor_target = copy.deepcopy(self.actor)
@@ -81,12 +74,21 @@ class TD3(CDL):
         self.actor.load_state_dict(torch.load(f'{directory}/actor.pth'))
         self.critic.load_state_dict(torch.load(f'{directory}/critic.pth')) 
     
-    # Display resulting regions
-    def _display(self, regions):
+    # Upload regions to Weights and Biases
+    def _log_regions(self, scenario, episode, regions, penalty):
+        _, ax = plt.subplots()
         for idx, region in enumerate(regions):
-            plt.fill(*region.exterior.xy)
-            plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        
+            ax.fill(*region.exterior.xy)
+            ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
+        ax.set_title(f'Scenario: {scenario} \nEpisode: {episode}, \nPenalty: {penalty}')
+
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        pil_image = Image.open(buffer)
+
+        wandb.log({"image": wandb.Image(pil_image)})
+
     # Get state from the environment
     def _get_state(self, scenario=None):
         start_regions = np.array(self.square.exterior.coords).reshape(1, -1)
@@ -99,14 +101,18 @@ class TD3(CDL):
                     
         state = torch.FloatTensor(np.concatenate((encoded_scenario, start_regions), axis=-1))
         return state, scenario, encoded_scenario
+    
+    def _get_feedback(self, coeffs, scenario):
+        criterion, regions = super()._optimizer(coeffs, scenario)
+        penalty = -np.sum(criterion * WEIGHTS)
+        return penalty, regions
             
     # Populate the replay buffer with dummy transitions
     def _populate_buffer(self):
         while len(self.replay_buffer) < NUM_DUMMY:
             state, scenario, _ = self._get_state()
             coeffs = self.rng.uniform(-self.max_action, self.max_action, size=self.action_dim)
-            reward, _ = self._optimizer(coeffs, scenario, self.weights)
-            penalty = -reward
+            penalty, _ = self._get_feedback(coeffs, scenario)
             
             self.replay_buffer.add(state, coeffs, penalty)
         
@@ -121,15 +127,14 @@ class TD3(CDL):
     # Learn from the replay buffer
     def _learn(self):
         for it in range(NUM_ITERATIONS):
-            state, action, reward = self.replay_buffer.sample(BATCH_SIZE)
+            state, action, penalty = self.replay_buffer.sample(BATCH_SIZE)
             state = torch.FloatTensor(state)
             action = torch.FloatTensor(action)
-            reward = torch.FloatTensor(reward)
+            penalty = torch.FloatTensor(penalty)
             
-            # Next state is terminal, therefore target_Q is the reward
-            target_Q = reward
+            # Next state is terminal, therefore target_Q is the penalty
+            target_Q = penalty.view(len(penalty), 1, 1)
             
-            # TODO: Figure out error in dimensions
             current_Q1, current_Q2 = self.critic(state, action)
             critic_loss = mse_loss(current_Q1, target_Q) + mse_loss(current_Q2, target_Q)
             
@@ -149,34 +154,34 @@ class TD3(CDL):
                 
                 # Update the frozen target models
                 for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-                    target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+                    target_param.data.copy_(TAU * param.data + (1 - TAU) * target_param.data)
                 for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
-                    target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+                    target_param.data.copy_(TAU * param.data + (1 - TAU) * target_param.data)
                     
     def _train_model(self):
         penalties = []
-        best_avg = -300
+        best_avg = -200
         
-        # self._populate_buffer()
+        self._populate_buffer()
         for episode in range(NUM_EPISODES):
             state, scenario, _ = self._get_state()
             coeffs = self._select_coeffs(state)
-            reward, _ = self._optimizer(coeffs, scenario, self.weights)
-            penalty = -reward
+            penalty, regions = self._get_feedback(coeffs, scenario)
             self.replay_buffer.add(state, coeffs, penalty)
             
             penalties.append(penalty)
-            avg_penalty = np.mean(penalties[-50:])
+            avg_penalty = np.mean(penalties[-100:])
             
             if best_avg < avg_penalty:
                 best_avg = avg_penalty
                 print("Saving best model....\n")
                 self._save()
             
-            print(f'Episode: {episode}\nReward: {reward}\nAverage Reward: {avg_penalty}\n', end="")
+            print(f'Episode: {episode}\nPenalty: {penalty}\nAverage Penalty: {avg_penalty}\n', end="")
             
-            # TODO: Add in Weights and Biases image upload
-            # wandb.log({"reward": reward, "avg_penalty": avg_penalty})
+            wandb.log({"penalty": penalty, "avg_penalty": avg_penalty})
+            if episode % 50 == 0:
+                self._log_regions(scenario, episode, regions, penalty)
             
             if avg_penalty >= PENALTY_THRES:
                 break
@@ -184,7 +189,7 @@ class TD3(CDL):
             self._learn()
     
     # Set the model to generate the language
-    def set_model(self):
+    def setup(self):
         try:
             self._load()
         except:
@@ -197,4 +202,5 @@ class TD3(CDL):
         state, _, _ = self._get_state(scenario)
         coeffs = self._select_coeffs(state, noise=0)
         lines = self._get_lines_from_coeffs(coeffs)
-        self.language = self._create_regions(lines)
+        regions = self._create_regions(lines)
+        return regions

@@ -11,9 +11,8 @@ class Listener(BaseAgent):
     def _generate_constraints(self):
         a=3
             
-    def get_action(self, observation, goal, directions, find_target, env):
+    def get_action(self, observation, goal, directions, env):
         observation = observation[0:2]
-        target = find_target(observation, goal, directions)
         
         obs_region = self.localize(observation)
         goal_region = self.localize(goal)

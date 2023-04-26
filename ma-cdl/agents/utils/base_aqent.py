@@ -6,19 +6,11 @@ from scipy.spatial import distance
 
 class BaseAgent():
     def __init__(self):
-        self.grid = None
-        self.language = None
         self.n_actions = np.arange(0,5)
         
-    def set_grid(self, grid):
-        self.grrid = grid
-        
-    def set_language(self, language):
-        self.language = language
-        
-    def localize(self, pos):
+    def localize(self, pos, language):
         try:
-            region_idx = list(map(lambda region: region.contains(pos), self.language)).index(True)
+            region_idx = list(map(lambda region: region.contains(pos), language)).index(True)
         except:
             region_idx = None
         return region_idx    

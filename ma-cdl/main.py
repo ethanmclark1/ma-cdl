@@ -13,9 +13,6 @@ from environment.utils.problems import problem_scenarios
 
 from languages.td3 import TD3
 from languages.evolutionary_algo import EA
-from languages.grid_world import GridWorld
-from languages.bandit import MultiArmedBandit
-
 class MA_CDL2():
     def __init__(self, args):
         self.num_episodes = 10
@@ -27,32 +24,33 @@ class MA_CDL2():
         
         self.speaker = Speaker()
         self.listener = Listener()
-        self.grid_world = GridWorld()        
         self.ea = EA(agent_radius, obs_radius, num_obs)
         self.td3 = TD3(agent_radius, obs_radius, num_obs)
-        self.bandit = MultiArmedBandit(agent_radius, obs_radius, num_obs)
 
     def act(self):
-        approaches = ['ea', 'td3', 'grid_world']
-        direction_set = {approach: None for approach in approaches}
+        approaches = ['ea', 'td3', 'bandit']
+        directions = {approach: None for approach in approaches}
+        languages = {approach: None for approach in approaches}
         direction_len = {approach: {scenario: [] for scenario in problem_scenarios} for approach in approaches}
         results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
         
-        self.td3.set_model()
+        self.td3.setup()
         for _, scenario in product(range(self.num_episodes), problem_scenarios):
-            self.ea.get_language(scenario)
-            self.td3.get_language(scenario)
+            languages['ea'] = self.ea.get_language(scenario)
+            languages['td3'] = self.td3.get_language(scenario)
             
             self.env.reset(options={'problem_name': scenario})
             start, goal, obstacles = self.env.unwrapped.get_init_conditions()
             
-            direction_set['grid_world'] = self.grid_world.direct(start, goal, obstacles)
-                        
+            # TODO: Fix this
+            directions['ea'] = self.speaker.direct(start, goal, obstacles, languages['ea'])    
+            directions['td3'] = self.speaker.direct(start, goal, obstacles, languages['td3'])    
+                                    
             world = self.env.unwrapped.world
             backup = copy.deepcopy(world)
             
-            for approach in direction_set:                
-                directions = direction_set[approach]
+            for approach in directions:                
+                directions = directions[approach]
                 if directions is None:
                     continue
                 
@@ -61,8 +59,7 @@ class MA_CDL2():
                 obs, _, termination, truncation, _ = self.env.last()
 
                 while not (termination or truncation):
-                    if approach == 'grid_world':
-                        action = self.grid_world.get_action(obs, goal, directions, self.env)
+                    action = self.listener.get_action(obs, goal, directions, self.env)
                     
                     # No action can adhere to the directions
                     if action is None:

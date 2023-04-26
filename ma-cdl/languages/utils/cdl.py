@@ -132,12 +132,13 @@ class CDL:
     """ 
     Calculate cost of a given problem (i.e. all configurations) 
     with respect to the regions and the given positional constraints: 
-        1. Unsafe plans
-        2. Language efficiency
-        3. Mean of nonnavigable area
-        4. Variance of nonnavigable area
+        1. Mean of unsafe plans
+        2. Variance of unsafe plans
+        3. Language efficiency
+        4. Mean of nonnavigable area
+        5. Variance of nonnavigable area
     """
-    def _optimizer(self, coeffs, scenario, weights=np.array([12, 2, 25, 25])):
+    def _optimizer(self, coeffs, scenario):
         lines = self._get_lines_from_coeffs(coeffs)
         regions = self._create_regions(lines)
         if len(regions) == 0: return inf
@@ -152,14 +153,14 @@ class CDL:
                 unsafe.append(config_cost[1])
                 i += 1
         
-        unsafe = sum(unsafe)
+        unsafe_mu = mean(unsafe)
+        unsafe_var = variance(unsafe)
         efficiency = len(regions)
         nonnavigable_mu = mean(nonnavigable)
         nonnavigable_var = variance(nonnavigable)
         
-        criterion = np.array([unsafe, efficiency, nonnavigable_mu, nonnavigable_var])
-        problem_cost = np.sum(criterion * weights)
-        return problem_cost, regions
+        criterion = np.array([unsafe_mu, unsafe_var, efficiency, nonnavigable_mu, nonnavigable_var])
+        return criterion, regions
     
     # Visualize regions that define the language
     def _visualize(self, class_name, scenario):

@@ -13,7 +13,7 @@ import random
 from itertools import permutations
 
 class ReplayBuffer(object):
-    def __init__(self, size=750000):
+    def __init__(self, size=1000000):
         """Create Replay buffer.
 
         Parameters

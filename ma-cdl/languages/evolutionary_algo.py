@@ -34,7 +34,9 @@ class EA(CDL):
         self.language = language
     
     def _optimizer(self, coeffs, scenario):
-        problem_cost, _ = super()._optimizer(coeffs, scenario)
+        weights = np.array([6, 6, 2, 25, 25])
+        criterion, _ = super()._optimizer(coeffs, scenario)
+        problem_cost = np.sum(criterion * weights)
         return problem_cost
         
     # Minimizes cost function to generate the optimal lines

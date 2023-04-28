@@ -16,6 +16,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
+from math import inf
 from PIL import Image
 from torch.optim import Adam
 from torch.nn.functional import mse_loss
@@ -30,13 +31,13 @@ wandb.init(project='td3', entity='ethanmclark1')
 config = wandb.config
 config.tau = TAU = 0.005
 config.batch_size = BATCH_SIZE = 64
-config.num_dummy = NUM_DUMMY = 250000
+config.num_dummy = NUM_DUMMY = 400000
 config.num_episodes = NUM_EPISODES = 75000
 config.penalty_thres = PENALTY_THRES = -6
 config.num_iterations = NUM_ITERATIONS = 100
 config.policy_update_freq = POLICY_UPDATE_FREQ = 2
-config.weights = WEIGHTS = np.array([1, 1, 1.25, 1, 1])
-config.replay_buffer_size = REPLAY_BUFFER_SIZE = 1000000
+config.weights = WEIGHTS = np.array([3, 2, 1.75, 3, 2])
+config.replay_buffer_size = REPLAY_BUFFER_SIZE = 800000
 
 """ Twin Delayed Deep Deterministic Policy Gradient (TD3) """
 class TD3(CDL):
@@ -105,6 +106,8 @@ class TD3(CDL):
     def _get_feedback(self, coeffs, scenario):
         criterion, regions = super()._optimizer(coeffs, scenario)
         penalty = -np.sum(criterion * WEIGHTS)
+        if penalty == inf:
+            penalty = -1000
         return penalty, regions
             
     # Populate the replay buffer with dummy transitions
@@ -172,15 +175,15 @@ class TD3(CDL):
             penalties.append(penalty)
             avg_penalty = np.mean(penalties[-100:])
             
-            if best_avg < avg_penalty:
-                best_avg = avg_penalty
-                print("Saving best model....\n")
-                self._save()
+            # if best_avg < avg_penalty:
+            #     best_avg = avg_penalty
+            #     print("Saving best model....\n")
+            #     self._save()
             
             print(f'Episode: {episode}\nPenalty: {penalty}\nAverage Penalty: {avg_penalty}\n', end="")
             
             wandb.log({"penalty": penalty, "avg_penalty": avg_penalty})
-            if episode % 50 == 0:
+            if episode % 3000 == 0 and len(regions) > 0:
                 self._log_regions(scenario, episode, regions, penalty)
             
             if avg_penalty >= PENALTY_THRES:

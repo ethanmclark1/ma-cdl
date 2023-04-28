@@ -44,7 +44,10 @@ class CDL:
         x, y = sp.symbols('x y')
         for equation in equations:  
             eq = sp.Eq(equation[0]*x + equation[1]*y + equation[2], 0)
-            y_expr = sp.solve(eq, y)[0]
+            try:
+                y_expr = sp.solve(eq, y)[0]
+            except IndexError:
+                continue
             slope = y_expr.as_coefficients_dict()[x]
             if abs(slope) >= 1:
                 # Find values of y when x = -1, 1

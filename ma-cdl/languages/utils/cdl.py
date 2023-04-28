@@ -141,7 +141,8 @@ class CDL:
     def _optimizer(self, coeffs, scenario):
         lines = self._get_lines_from_coeffs(coeffs)
         regions = self._create_regions(lines)
-        if len(regions) == 0: return inf
+        if len(regions) == 0: 
+            return np.array([inf, inf, inf, inf, inf]), []
         
         i = 0
         nonnavigable, unsafe = [], []
@@ -178,6 +179,17 @@ class CDL:
         plt.cla()
         plt.clf()
         plt.close('all')
+        
+    # Set the model to generate the language
+    def setup(self):
+        class_name = self.__class__.__name__
+        try:
+            self._load()
+        except FileNotFoundError:
+            print('No existing model found.')
+            print(f'Training new {class_name} model...')
+            self._train_model()
+            self._save()
     
     def get_language(self):
         raise NotImplementedError

@@ -65,7 +65,7 @@ class SimpleEnv(AECEnv):
         self.continuous_actions = continuous_actions
         self.local_ratio = local_ratio
 
-        self.scenario.reset_world(self.world, 'random', self.np_random)
+        self.scenario.reset_world(self.world, 'cluster', self.np_random)
         self.agents = [agent.name for agent in self.world.agents]
         self.possible_agents = self.agents[:]
         self._index_map = {
@@ -153,7 +153,7 @@ class SimpleEnv(AECEnv):
         if seed is not None:
             self.seed(seed=seed)
         
-        problem_scenario = options['problem_name'] if options is not None else 'random'
+        problem_scenario = options['problem_name'] if options is not None else 'cluster'
         self.scenario.reset_world(self.world, problem_scenario, self.np_random)
 
         self.agents = self.possible_agents[:]

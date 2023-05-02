@@ -1,43 +1,20 @@
-import os
 import time
-import pickle
 import numpy as np
 
 from math import inf
 from scipy import optimize
 from languages.utils.cdl import CDL
 
-"""
-Evolutionary Algorithm for generating a language
-** Does not guarantee optimality **
-"""
+"""Evolutionary Algorithm"""
 class EA(CDL):
     def __init__(self, agent_radius, obs_radius, num_obstacles):
         super().__init__(agent_radius, obs_radius, num_obstacles)
         
-    def _save(self, class_name, scenario):
-        directory = 'ma-cdl/language/history'
-        filename = f'{class_name}-{scenario}.pkl'
-        file_path = os.path.join(directory, filename)
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-        with open(file_path, 'wb') as file:
-            pickle.dump(self.language, file)
-    
-    def _load(self, class_name, scenario):
-        directory = 'ma-cdl/language/history'
-        filename = f'{class_name}-{scenario}.pkl'
-        file_path = os.path.join(directory, filename)
-        with open(file_path, 'rb') as f:
-            language = pickle.load(f)
-        self.language = language
-    
     def _optimizer(self, coeffs, scenario):
-        weights = np.array([6, 6, 2, 25, 25])
-        criterion, _ = super()._optimizer(coeffs, scenario)
-        problem_cost = np.sum(criterion * weights)
-        return problem_cost
+        lines = self._get_lines_from_coeffs(coeffs)
+        regions = self._create_regions(lines)
+        scenario_cost = super()._optimizer(regions, scenario)
+        return scenario_cost
         
     # Minimizes cost function to generate the optimal lines
     def _generate_optimal_coeffs(self, scenario):
@@ -57,18 +34,3 @@ class EA(CDL):
         print(f'Elapsed time: {end - start} seconds')
         optim_coeffs = np.reshape(optim_coeffs, (-1, 3))
         return optim_coeffs
-
-    # Returns regions that defines the language
-    def get_language(self, scenario):
-        class_name = self.__class__.__name__
-        try:
-            self._load(class_name, scenario)
-        except:
-            print(f'No stored {class_name} language for {scenario} problem.')
-            print('Generating new language...')
-            coeffs = self._generate_optimal_coeffs(scenario)
-            lines = self._get_lines_from_coeffs(coeffs)
-            self.language = self._create_regions(lines)
-            self._save(class_name, scenario)
-        
-        self._visualize(class_name, scenario)

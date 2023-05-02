@@ -13,7 +13,7 @@ from environment.utils.problems import problem_scenarios
 
 from languages.td3 import TD3
 from languages.evolutionary_algo import EA
-from languages.bandit import Bandit
+from languages.bandit import Bandit, ContextualBandit
 
 class MA_CDL2():
     def __init__(self, args):
@@ -27,22 +27,23 @@ class MA_CDL2():
         self.ea = EA(agent_radius, obs_radius, num_obs)
         self.td3 = TD3(agent_radius, obs_radius, num_obs)
         self.bandit = Bandit(agent_radius, obs_radius, num_obs)
+        self.contextual_bandit = ContextualBandit(agent_radius, obs_radius, num_obs)
         
         self.speaker = Speaker()
         self.listener = Listener()
 
     def act(self):
-        approaches = ['ea', 'td3', 'bandit']
+        approaches = ['ea', 'td3', 'bandit', 'contextual_bandit']
         directions = {approach: None for approach in approaches}
         languages = {approach: None for approach in approaches}
         direction_len = {approach: {scenario: [] for scenario in problem_scenarios} for approach in approaches}
         results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
         
-        self.bandit.setup()
-        self.td3.setup()
         for _, scenario in product(range(self.num_episodes), problem_scenarios):
-            languages['ea'] = self.ea.get_language(scenario)
+            # languages['ea'] = self.ea.get_language(scenario)
             languages['td3'] = self.td3.get_language(scenario)
+            languages['bandit'] = self.bandit.get_language(scenario)
+            languages['contextual_bandit'] = self.contextual_bandit.get_language(scenario)
             
             self.env.reset(options={'problem_name': scenario})
             start, goal, obstacles = self.env.unwrapped.get_init_conditions()

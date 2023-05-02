@@ -8,7 +8,6 @@ Version: 21d162f
 License: MIT License
 """
 
-import os
 import io
 import copy
 import wandb
@@ -28,8 +27,16 @@ from languages.utils.replay_buffer import ReplayBuffer
 class TD3(CDL):
     def __init__(self, agent_radius, obs_radius, num_obstacles):
         super().__init__(agent_radius, obs_radius, num_obstacles)
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.next_states = []
+        self.dones = []
+        self.lines = []
+        
         self._init_hyperparams()
-        self.rng = np.random.default_rng()
+        self._init_wandb()
+        self.rng = np.random.default_rng(seed=42)
         self.replay_buffer = ReplayBuffer(size=self.replay_buffer_size)
         
         self.actor = Actor(self.state_dim, self.action_dim, self.action_range)
@@ -38,53 +45,49 @@ class TD3(CDL):
         
         self.critic = Critic(self.state_dim, self.action_dim)
         self.critic_target = copy.deepcopy(self.critic)
-        self.critic_optimizer = Adam(self.critic.parameters())   
+        self.critic_optimizer = Adam(self.critic.parameters())  
         
-    def _save_model(self):
-        directory = 'ma-cdl/languages/history/saved_models'
-        filepaths = [f'{directory}/actor.pth', f'{directory}/critic.pth']
-        
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-            
-        torch.save(self.actor.state_dict(), filepaths[0])
-        torch.save(self.critic.state_dict(), filepaths[1])
-
-    def _load_model(self):
-        directory = 'ma-cdl/languages/history/saved_models'
-        self.actor.load_state_dict(torch.load(f'{directory}/actor.pth'))
-        self.critic.load_state_dict(torch.load(f'{directory}/critic.pth')) 
-    
-    # Initialize hyperparameters & set up Weights and Biases
     def _init_hyperparams(self):
-        self.lines = []
+        self.tau = 0.005
+        self.gamma = 0.99
         self.action_dim = 3
+        self.batch_size = 64
         self.state_dim = 300
         self.max_actions = 6
         self.action_range = 1
-        self.states, self.actions, self.rewards, self.next_states, self.dones = \
-            [], [], [], [], []
+        self.num_dummy = 150000
+        self.noise_clip = 0.025
+        self.num_episodes = 500
+        self.reward_thres = -35
+        self.policy_noise = 0.005
+        self.num_iterations = 100
+        self.policy_update_freq = 2
+        self.replay_buffer_size = 800000
+        
+    def _init_wandb(self):
         wandb.init(project='td3', entity='ethanmclark1')
         config = wandb.config
+        config.tau = self.tau
+        config.gamma = self.gamma 
         config.weights = self.weights
-        config.tau = self.tau = 0.005
-        config.gamma = self.gamma = 0.99
-        config.batch_size = self.batch_size = 64
-        config.num_dummy = self.num_dummy = 400000
-        config.reward_thres = self.reward_thres = -30
-        config.policy_noise = self.policy_noise = 0.005
-        config.num_episodes = self.num_episodes = 75000
-        config.num_iterations = self.num_iterations = 100
-        config.policy_update_freq = self.policy_update_freq = 2
-        config.replay_buffer_size = self.replay_buffer_size = 800000
+        config.num_dummy = self.num_dummy
+        config.noise_clip = self.noise_clip
+        config.batch_size = self.batch_size
+        config.num_episodes = self.num_episodes
+        config.reward_thres = self.reward_thres
+        config.policy_noise = self.policy_noise
+        config.num_iterations = self.num_iterations
+        config.policy_update_freq = self.policy_update_freq
+        config.replay_buffer_size = self.replay_buffer_size
     
     # Upload regions to Weights and Biases
     def _log_regions(self, scenario, episode, regions, reward):
         _, ax = plt.subplots()
+        scenario = scenario.capitalize()
         for idx, region in enumerate(regions):
             ax.fill(*region.exterior.xy)
             ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        ax.set_title(f'Scenario: {scenario} \nEpisode: {episode}, \nPenalty: {reward}')
+        ax.set_title(f'Scenario: {scenario}   Episode: {episode}   Reward: {reward:.2f}')
 
         buffer = io.BytesIO()
         plt.savefig(buffer, format='png')
@@ -117,9 +120,9 @@ class TD3(CDL):
             reward = _reward
             self.lines = []
         
-        next_state.extend([coord for region in regions for coord in region.exterior.coords])
+        next_state.extend(coord for region in regions for coord in region.exterior.coords)
         next_state = self._pad_state(next_state)
-        return reward, next_state, done
+        return reward, next_state, done, regions
     
     # Shuffle actions to remove order dependency
     def _remember(self, state, action, reward, next_state, done):
@@ -161,45 +164,45 @@ class TD3(CDL):
         state = start_state
         while len(self.replay_buffer) < self.num_dummy:
             action = self.rng.uniform(-self.action_range, self.action_range, size=self.action_dim)
-            reward, next_state, done = self._step(scenario, action, num_action)
+            reward, next_state, done, _ = self._step(scenario, action, num_action)
             self._remember(state, action, reward, next_state, done)
             
             if done: 
-                num_action = 0
+                num_action = 1
                 state = start_state
             else:
                 num_action += 1
                 state = next_state
                     
-    # Select an action (ceefficients of a linear line)
+    # Select an action (coefficients of a linear line)
     def _select_action(self, state, noise=0.005):
         action = self.actor(state).data.numpy().flatten()
         if noise != 0:
-            action = (action + np.random.normal(0, noise, size=self.action_dim))
+            action = (action + self.rng.uniform(0, noise, size=self.action_dim)).clip(-self.action_range, self.action_range)
             
         return action
     
     # Learn from the replay buffer
     def _learn(self):
         for it in range(self.num_iterations):
-            state, action, reward, next_state, done = self.replay_buffer.sample(self.batch_size)
-            state = torch.FloatTensor(state)
-            action = torch.FloatTensor(action)
-            reward = torch.FloatTensor(reward)
-            next_state = torch.FloatTensor(next_state)
-            done = torch.FloatTensor(done)
+            states, actions, rewards, next_states, dones = self.replay_buffer.sample(self.batch_size)
+            states = torch.FloatTensor(states)
+            actions = torch.FloatTensor(actions)
+            rewards = torch.FloatTensor(rewards).unsqueeze(-1)
+            next_states = torch.FloatTensor(next_states)
+            dones = torch.FloatTensor(dones).unsqueeze(-1)
             
-            # Select action according to policy and add clipped noise
-            noise = action.data.normal_(0, self.policy_noise)
+            # Select actions according to policy and add clipped noise
+            noise = actions.data.normal_(0, self.policy_noise)
             noise = noise.clamp(-self.noise_clip, self.noise_clip)
-            next_action = (self.actor_target(next_state) + noise).clamp(-self.action_range, self.action_range)
+            next_actions = (self.actor_target(next_states) + noise).clamp(-self.action_range, self.action_range)
             
-            target_Q1, target_Q2 = self.critic_target(next_state, next_action)
-            target_Q = torch.min(target_Q1, target_Q2)
-            target_Q = reward + (done * self.gamma * target_Q).detach()
+            target_Q1, target_Q2 = self.critic_target(next_states, next_actions)
+            target_Q = torch.max(target_Q1, target_Q2)
+            target_Q = rewards + (dones * self.gamma * target_Q).detach()
             
             # Current Q estimates
-            current_Q1, current_Q2 = self.critic(state, action)
+            current_Q1, current_Q2 = self.critic(states, actions)
             
             # Critic loss 
             critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
@@ -211,7 +214,7 @@ class TD3(CDL):
             
             # Delayed policy updates
             if it % self.policy_update_freq == 0:
-                actor_loss = -self.critic.get_Q1(state, self.actor(state)).mean()
+                actor_loss = -self.critic.get_Q1(states, self.actor(states)).mean()
                 
                 # Optimize the actor
                 self.actor_optimizer.zero_grad()
@@ -225,35 +228,36 @@ class TD3(CDL):
                     target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
     
     # Train the model on a given scenario
-    def _train(self, scenario, start_state):
-        rewards = []
-        
+    def _train(self, scenario, start_state):   
+        rewards = []     
         self._populate_buffer(scenario, start_state)
         
         for episode in range(self.num_episodes):
             done = False
-            state = start_state
             num_action = 1
+            state = start_state
             while not done: 
                 action = self._select_action(state)
-                reward, next_state, done = self._step(scenario, action, num_action)   
+                reward, next_state, done, regions = self._step(scenario, action, num_action)  
                 self._remember(state, action, reward, next_state, done)         
                 self._learn()
                 state = next_state
                 num_action += 1
-            
+                
             rewards.append(reward)
             avg_reward = np.mean(rewards[-100:])
-            print(f'Episode: {episode}\nPenalty: {reward}\nAverage Penalty: {avg_reward}\n', end="")
+            
+            print(f'Episode: {episode}\t Reward: {reward:.2f}\t Average Reward: {avg_reward:.2f}')
             
             wandb.log({"reward": reward, "avg_reward": avg_reward})
-            if episode % 3000 == 0 and len(regions) > 0:
+            if episode % 50 == 0 and len(regions) > 0:
                 self._log_regions(scenario, episode, regions, reward)
     
     def _generate_optimal_coeffs(self, scenario):
         state = self._pad_state(self.square.exterior.coords)
         
         done = False
+        num_action = 1
         optim_coeffs = []
         self._train(scenario, state)
         
@@ -261,9 +265,10 @@ class TD3(CDL):
             while not done: 
                 action = self._select_action(state, noise=0)
                 optim_coeffs.append(action)
-                _, next_state, done = self._step(scenario, action, 1)
+                reward, next_state, done, _ = self._step(scenario, action, num_action)
                 state = next_state
-                action_count += 1
+                num_action += 1
         
+        print(f'Final reward: {reward}')
         optim_coeffs = np.array(optim_coeffs).reshape(-1, self.action_dim)     
         return optim_coeffs  

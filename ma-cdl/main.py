@@ -1,4 +1,5 @@
 import copy
+import cProfile
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -142,5 +143,5 @@ class MA_CDL2():
 if __name__ == '__main__':
     args = get_arguments()
     ma_cdl2 = MA_CDL2(args)
-    results, avg_direction_len = ma_cdl2.act()
+    results, avg_direction_len = cProfile.run('ma_cdl2.act()')
     ma_cdl2.plot(results, avg_direction_len)

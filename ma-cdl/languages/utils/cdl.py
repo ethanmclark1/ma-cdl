@@ -2,7 +2,6 @@ import os
 import pickle
 import warnings
 import numpy as np
-import sympy as sp
 import matplotlib.pyplot as plt
 
 from math import inf
@@ -72,32 +71,30 @@ class CDL:
     # Line in standard form: Ax + By + C = 0
     def _get_lines_from_coeffs(self, coeffs):
         lines = []
-        try:
-            equations = np.reshape(coeffs, (-1, 3))
-            
-            x, y = sp.symbols('x y')
-            for equation in equations:  
-                eq = sp.Eq(equation[0]*x + equation[1]*y + equation[2], 0)
-                try:
-                    y_expr = sp.solve(eq, y)[0]
-                except IndexError:
-                    continue
-                slope = y_expr.as_coefficients_dict()[x]
-                if abs(slope) >= 1:
-                    # Find values of y when x = -1, 1
-                    solution = sp.solve(eq, y, dict=True)
-                    start = (-1, solution[0][y].subs(x, -1))
-                    end = (1, solution[0][y].subs(x, 1))
-                else:
-                    # Find values of x when y = -1, 1
-                    solution = sp.solve(eq, x, dict=True)
-                    start = (solution[0][x].subs(y, -1), -1)
-                    end = (solution[0][x].subs(y, 1), 1)            
-                lines.append(LineString([start, end]))
-        except ValueError:
-            pass
-        
-        return lines   
+        equations = np.reshape(coeffs, (-1, 3))
+
+        for equation in equations:
+            a, b, c = equation
+
+            if b == 0:  # Avoid division by zero
+                continue
+
+            slope = a / -b
+            abs_slope = abs(slope)
+
+            if abs_slope >= 1:
+                # Find values of y when x = -1, 1
+                y1 = (a - c) / b
+                y2 = (-a - c) / b
+                start, end = (-1, y1), (1, y2)
+            else:
+                # Find values of x when y = -1, 1
+                x1 = (b - c) / a
+                x2 = (-b - c) / a
+                start, end = (x1, -1), (x2, 1)
+            lines.append(LineString([start, end]))
+
+        return lines
     
     # Find the intersections between lines and the environment boundary
     def _get_valid_lines(self, lines):
@@ -147,8 +144,9 @@ class CDL:
         2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
     """
     def _problem_cost(self, start, goal, obstacles, regions):
+        obstacle_points = [Point(obs) for obs in obstacles]
         obstacles_idx = set(idx for idx, region in enumerate(regions)
-                            for obs in obstacles if region.contains(Point(obs)))
+                            for obs in obstacle_points if region.contains(obs))
         nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
         
         path = self.rrt_star.plan(start, goal, obstacles)

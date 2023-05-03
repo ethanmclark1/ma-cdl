@@ -41,7 +41,6 @@ class MA_CDL2():
         results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
         
         for _, scenario in product(range(self.num_episodes), problem_scenarios):
-            # languages['ea'] = self.ea.get_language(scenario)
             languages['td3'] = self.td3.get_language(scenario)
             languages['bandit'] = self.bandit.get_language(scenario)
             languages['contextual_bandit'] = self.contextual_bandit.get_language(scenario)
@@ -143,5 +142,5 @@ class MA_CDL2():
 if __name__ == '__main__':
     args = get_arguments()
     ma_cdl2 = MA_CDL2(args)
-    results, avg_direction_len = cProfile.run('ma_cdl2.act()')
+    results, avg_direction_len = ma_cdl2.act()
     ma_cdl2.plot(results, avg_direction_len)

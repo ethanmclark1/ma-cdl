@@ -2,6 +2,40 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class Autoencoder(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(Autoencoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 2056),
+            nn.ReLU(),
+            nn.Linear(2056, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, output_dim)
+        )        
+        self.decoder = nn.Sequential(
+            nn.Linear(output_dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 2056),
+            nn.ReLU(),
+            nn.Linear(2056, input_dim),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        x = x.reshape(1, -1)
+        x = torch.FloatTensor(x)
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+        return decoded
+
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):
         super(Actor, self).__init__()

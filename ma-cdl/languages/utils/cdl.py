@@ -84,13 +84,13 @@ class CDL:
 
             if abs_slope >= 1:
                 # Find values of y when x = -1, 1
-                y1 = (a - c) / b
-                y2 = (-a - c) / b
+                y1 = (-a + c) / -b
+                y2 = (a + c) / -b
                 start, end = (-1, y1), (1, y2)
             else:
                 # Find values of x when y = -1, 1
-                x1 = (b - c) / a
-                x2 = (-b - c) / a
+                x1 = (-b + c) / -a
+                x2 = (b + c) / -a
                 start, end = (x1, -1), (x2, 1)
             lines.append(LineString([start, end]))
 

@@ -8,7 +8,7 @@ Version: 21d162f
 License: MIT License
 """
 
-import io
+import io        
 import copy
 import wandb
 import torch
@@ -20,8 +20,8 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.optim import Adam
 from languages.utils.cdl import CDL
-from languages.utils.networks import Actor, Critic
 from languages.utils.replay_buffer import ReplayBuffer
+from languages.utils.networks import Autoencoder, Actor, Critic
 
 """Twin Delayed Deep Deterministic Policy Gradient (TD3)"""
 class TD3(CDL):
@@ -39,6 +39,9 @@ class TD3(CDL):
         self.rng = np.random.default_rng(seed=42)
         self.replay_buffer = ReplayBuffer(size=self.replay_buffer_size)
         
+        input_dims = (self.input_dims[0] * self.input_dims[1])
+        self.autoencoder = Autoencoder(input_dim=input_dims, output_dim=self.state_dim)
+        
         self.actor = Actor(self.state_dim, self.action_dim, self.action_range)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = Adam(self.actor.parameters())
@@ -55,14 +58,15 @@ class TD3(CDL):
         self.state_dim = 300
         self.max_actions = 6
         self.action_range = 1
-        self.num_dummy = 150000
+        self.num_dummy = 375000
         self.noise_clip = 0.025
-        self.num_episodes = 500
-        self.reward_thres = -35
+        self.reward_thres = -20
+        self.num_episodes = 1000
         self.policy_noise = 0.005
         self.num_iterations = 100
+        self.input_dims = (84, 84)
         self.policy_update_freq = 2
-        self.replay_buffer_size = 800000
+        self.replay_buffer_size = 1000000
         
     def _init_wandb(self):
         wandb.init(project='td3', entity='ethanmclark1')
@@ -73,7 +77,6 @@ class TD3(CDL):
         config.num_dummy = self.num_dummy
         config.noise_clip = self.noise_clip
         config.batch_size = self.batch_size
-        config.num_episodes = self.num_episodes
         config.reward_thres = self.reward_thres
         config.policy_noise = self.policy_noise
         config.num_iterations = self.num_iterations
@@ -95,27 +98,44 @@ class TD3(CDL):
         pil_image = Image.open(buffer)
 
         wandb.log({"image": wandb.Image(pil_image)})
-    
-    # Constant pad the state to a fixed size
-    def _pad_state(self, state):
-        flattened_state = np.array(state).ravel()
-        pad_number = self.state_dim - len(flattened_state)
-        padded_values = np.zeros(pad_number) - 2
-        padded_state = np.hstack((padded_values, flattened_state))
-        padded_state = torch.FloatTensor(padded_state)
-        return padded_state
         
+    def _display(self, regions):
+        _, ax = plt.subplots()
+        for idx, region in enumerate(regions):
+            ax.fill(*region.exterior.xy)
+            ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
+        plt.show()
+    
+    # Pixelate the environment
+    def _get_state(self, regions):
+        _, ax = plt.subplots()
+        for region in regions:
+            ax.plot(*region.exterior.xy)
+            
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        im = Image.open(buf).convert('L')
+        pixel_array = np.array(im)
+        pixel_array = np.array(Image.fromarray(pixel_array).resize((84, 84)))
+        plt.clf()
+        plt.close()
+        
+        state = self.autoencoder(pixel_array).detach()
+        return state
+            
     # Overlay lines in the environment
-    def _step(self, scenario, action, num_action):
+    def _step(self, scenario, action):
         done = False
-        reward = -125
+        reward = -1e4
         next_state = []
         
-        self.lines += self._get_lines_from_coeffs(action)
+        lines = self._get_lines_from_coeffs(action)
+        self.lines.extend(lines)
         regions = self._create_regions(self.lines)
         _reward = -super()._optimizer(regions, scenario)
         
-        if num_action == self.max_actions or _reward > self.reward_thres:
+        if len(lines) == 0 or _reward > self.reward_thres:
             done = True
             reward = _reward
             self.lines = []
@@ -148,7 +168,7 @@ class TD3(CDL):
                         self.lines = []
                         _done = True
                     else:
-                        _reward = -125
+                        _reward = -1e4
                         _done = False               
                              
                     self.replay_buffer.add(_state, _action, _reward, _next_state, _done)
@@ -159,23 +179,16 @@ class TD3(CDL):
     
     # Populate replay buffer with dummy transitions
     def _populate_buffer(self, scenario, start_state):
-        num_action = 1
-        
         state = start_state
         while len(self.replay_buffer) < self.num_dummy:
             action = self.rng.uniform(-self.action_range, self.action_range, size=self.action_dim)
-            reward, next_state, done, _ = self._step(scenario, action, num_action)
+            reward, next_state, done, _ = self._step(scenario, action)
             self._remember(state, action, reward, next_state, done)
             
-            if done: 
-                num_action = 1
-                state = start_state
-            else:
-                num_action += 1
-                state = next_state
+            state = start_state if done else next_state
                     
     # Select an action (coefficients of a linear line)
-    def _select_action(self, state, noise=0.005):
+    def _select_action(self, state, noise=0.05):
         action = self.actor(state).data.numpy().flatten()
         if noise != 0:
             action = (action + self.rng.uniform(0, noise, size=self.action_dim)).clip(-self.action_range, self.action_range)
@@ -232,32 +245,29 @@ class TD3(CDL):
         rewards = []     
         self._populate_buffer(scenario, start_state)
         
-        for episode in range(self.num_episodes):
+        for episode in range(1000):
             done = False
-            num_action = 1
             state = start_state
             while not done: 
                 action = self._select_action(state)
-                reward, next_state, done, regions = self._step(scenario, action, num_action)  
+                reward, next_state, done, regions = self._step(scenario, action)  
                 self._remember(state, action, reward, next_state, done)         
                 self._learn()
                 state = next_state
-                num_action += 1
                 
             rewards.append(reward)
-            avg_reward = np.mean(rewards[-100:])
+            avg_reward = np.mean(rewards[-25:])
             
             print(f'Episode: {episode}\t Reward: {reward:.2f}\t Average Reward: {avg_reward:.2f}')
             
             wandb.log({"reward": reward, "avg_reward": avg_reward})
-            if episode % 50 == 0 and len(regions) > 0:
+            if episode % 100 == 0 and len(regions) > 0:
                 self._log_regions(scenario, episode, regions, reward)
     
     def _generate_optimal_coeffs(self, scenario):
-        state = self._pad_state(self.square.exterior.coords)
+        state = self._get_state([self.square])
         
         done = False
-        num_action = 1
         optim_coeffs = []
         self._train(scenario, state)
         
@@ -265,9 +275,8 @@ class TD3(CDL):
             while not done: 
                 action = self._select_action(state, noise=0)
                 optim_coeffs.append(action)
-                reward, next_state, done, _ = self._step(scenario, action, num_action)
+                reward, next_state, done, _ = self._step(scenario, action)
                 state = next_state
-                num_action += 1
         
         print(f'Final reward: {reward}')
         optim_coeffs = np.array(optim_coeffs).reshape(-1, self.action_dim)     

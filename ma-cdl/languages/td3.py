@@ -98,7 +98,8 @@ class TD3(CDL):
         pil_image = Image.open(buffer)
 
         wandb.log({"image": wandb.Image(pil_image)})
-        
+    
+    # Debugging function
     def _display(self, regions):
         _, ax = plt.subplots()
         for idx, region in enumerate(regions):
@@ -140,8 +141,7 @@ class TD3(CDL):
             reward = _reward
             self.lines = []
         
-        next_state.extend(coord for region in regions for coord in region.exterior.coords)
-        next_state = self._pad_state(next_state)
+        next_state = self._get_state(regions)
         return reward, next_state, done, regions
     
     # Shuffle actions to remove order dependency
@@ -160,9 +160,8 @@ class TD3(CDL):
                     _next_state = []
                     self.lines += self._get_lines_from_coeffs(_action)
                     regions = self._create_regions(self.lines)
-                    _next_state.extend([coord for region in regions for coord in region.exterior.coords])
-                    _next_state = self._pad_state(_next_state)
-                    
+                    _next_state = self._get_state(regions)
+
                     if action_idx == len(shuffled_action) - 1:
                         _reward = self.rewards[-1]
                         self.lines = []
@@ -239,12 +238,16 @@ class TD3(CDL):
                     target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
                 for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
                     target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-    
-    # Train the model on a given scenario
-    def _train(self, scenario, start_state):   
-        rewards = []     
-        self._populate_buffer(scenario, start_state)
         
+    # Train autoencoder on pixelated environment             
+    def _train_ae(self):
+        a=3
+    
+    # Train model on a given scenario
+    def _train_rl(self, scenario, start_state):   
+        rewards = []     
+        self._populate_buffer(scenario, state)
+
         for episode in range(1000):
             done = False
             state = start_state
@@ -265,12 +268,13 @@ class TD3(CDL):
                 self._log_regions(scenario, episode, regions, reward)
     
     def _generate_optimal_coeffs(self, scenario):
+        self._train_ae()
+        
         state = self._get_state([self.square])
+        self._train_rl(scenario, state)
         
         done = False
         optim_coeffs = []
-        self._train(scenario, state)
-        
         with torch.no_grad():
             while not done: 
                 action = self._select_action(state, noise=0)

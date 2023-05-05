@@ -13,6 +13,13 @@ from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
 
+CORNERS = list(product((1, -1), repeat=2))
+BOUNDARIES = [LineString([CORNERS[0], CORNERS[2]]),
+              LineString([CORNERS[2], CORNERS[3]]),
+              LineString([CORNERS[3], CORNERS[1]]),
+              LineString([CORNERS[1], CORNERS[0]])]
+SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
+
 """"Base class for Context-Dependent Languages (EA, TD3, and Bandits)"""
 class CDL:
     def __init__(self, agent_radius, obs_radius, num_obstacles):
@@ -21,18 +28,12 @@ class CDL:
         self.agent_radius = agent_radius
         self.obs_radius = obs_radius
         self.num_obstacles = num_obstacles
-        corners = list(product((1, -1), repeat=2))
         self.weights = np.array([3, 2, 1.75, 3, 2])
         self.rrt_star = RRTStar(agent_radius, obs_radius)
-        self.square = Polygon([corners[2], corners[0], corners[1], corners[3]])
-        self.boundaries = [LineString([corners[0], corners[2]]),
-                           LineString([corners[2], corners[3]]),
-                           LineString([corners[3], corners[1]]),
-                           LineString([corners[1], corners[0]])]
         
     
     def _save(self, class_name, scenario):
-        directory = f'ma-cdl/language/history/{class_name}'
+        directory = f'ma-cdl/languages/history/{class_name}'
         filename = f'{scenario}.pkl'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
@@ -42,7 +43,7 @@ class CDL:
             pickle.dump(self.language, file)
     
     def _load(self, class_name, scenario):
-        directory = f'ma-cdl/language/history/{class_name}'
+        directory = f'ma-cdl/languages/history/{class_name}'
         filename = f'{scenario}.pkl'
         file_path = os.path.join(directory, filename)
         with open(file_path, 'rb') as f:
@@ -69,7 +70,8 @@ class CDL:
         
     # Generate lines from the coefficients
     # Line in standard form: Ax + By + C = 0
-    def _get_lines_from_coeffs(self, coeffs):
+    @staticmethod
+    def get_lines_from_coeffs(coeffs):
         lines = []
         equations = np.reshape(coeffs, (-1, 3))
 
@@ -97,11 +99,12 @@ class CDL:
         return lines
     
     # Find the intersections between lines and the environment boundary
-    def _get_valid_lines(self, lines):
-        valid_lines = list(self.boundaries)
+    @staticmethod
+    def get_valid_lines(lines):
+        valid_lines = list(BOUNDARIES)
 
         for line in lines:
-            intersection = self.square.intersection(line)
+            intersection = SQUARE.intersection(line)
             if not intersection.is_empty:
                 coords = np.array(intersection.coords)
                 if np.any(np.abs(coords) == 1, axis=1).all():
@@ -110,8 +113,9 @@ class CDL:
         return valid_lines    
     
     # Create polygonal regions from lines
-    def _create_regions(self, lines):
-        valid_lines = self._get_valid_lines(lines)
+    @staticmethod
+    def create_regions(lines):
+        valid_lines = CDL.get_valid_lines(lines)
         lines = MultiLineString(valid_lines).buffer(distance=1e-12)
         boundary = lines.convex_hull
         polygons = boundary.difference(lines)
@@ -210,8 +214,8 @@ class CDL:
             print(f'No stored {class_name} language for {scenario} problem.')
             print('Generating new language...')
             coeffs = self._generate_optimal_coeffs(scenario)
-            lines = self._get_lines_from_coeffs(coeffs)
-            self.language = self._create_regions(lines)
+            lines = CDL.get_lines_from_coeffs(coeffs)
+            self.language = CDL.create_regions(lines)
             self._save(class_name, scenario)
         
         self._visualize(class_name, scenario)

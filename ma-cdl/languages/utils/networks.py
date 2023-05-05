@@ -3,38 +3,41 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Autoencoder(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, output_dims):
         super(Autoencoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 2056),
+            nn.Conv2d(1, 8, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Linear(2056, 1024),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(8, 4, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Linear(1024, 512),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Flatten(),
+            nn.Linear(4*21*21, 256),
             nn.ReLU(),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Linear(512, output_dim)
+            nn.Linear(256, output_dims)
         )        
         self.decoder = nn.Sequential(
-            nn.Linear(output_dim, 512),
+            nn.Linear(output_dims, 256),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(256, 4*21*21),
             nn.ReLU(),
-            nn.Linear(512, 1024),
+            nn.Unflatten(1, (4, 21, 21)),
+            nn.ConvTranspose2d(4, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.Linear(1024, 2056),
-            nn.ReLU(),
-            nn.Linear(2056, input_dim),
+            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Sigmoid()
         )
     
     def forward(self, x):
-        x = x.reshape(1, -1)
-        x = torch.FloatTensor(x)
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
         return decoded
+    
+    def get_encoded(self, x):
+        with torch.no_grad():
+            encoded = self.encoder(x)
+        return encoded.flatten().numpy()
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):

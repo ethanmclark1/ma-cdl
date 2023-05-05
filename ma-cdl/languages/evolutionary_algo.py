@@ -11,8 +11,8 @@ class EA(CDL):
         super().__init__(agent_radius, obs_radius, num_obstacles)
         
     def _optimizer(self, coeffs, scenario):
-        lines = self._get_lines_from_coeffs(coeffs)
-        regions = self._create_regions(lines)
+        lines = CDL.get_lines_from_coeffs(coeffs)
+        regions = CDL.create_regions(lines)
         scenario_cost = super()._optimizer(regions, scenario)
         return scenario_cost
         

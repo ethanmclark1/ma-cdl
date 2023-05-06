@@ -34,9 +34,9 @@ class TD3(CDL):
         self.rewards = []
         self.next_states = []
         self.dones = []
-        self.lines = []
+        self.valid_lines = set()
     
-        self.state_dims = 32
+        self.state_dims = 64
         self.action_dims = 3
         
         self._init_hyperparams()
@@ -78,7 +78,6 @@ class TD3(CDL):
         config.num_dummy = self.num_dummy
         config.noise_clip = self.noise_clip
         config.batch_size = self.batch_size
-        config.reward_thres = self.reward_thres
         config.policy_noise = self.policy_noise
         config.num_iterations = self.num_iterations
         config.policy_update_freq = self.policy_update_freq
@@ -99,29 +98,23 @@ class TD3(CDL):
 
         wandb.log({"image": wandb.Image(pil_image)})
     
-    # Debugging function
-    def _display(self, regions):
-        _, ax = plt.subplots()
-        for idx, region in enumerate(regions):
-            ax.fill(*region.exterior.xy)
-            ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        plt.show()
-    
     # Overlay lines in the environment
     def _step(self, scenario, action):
         done = False
         reward = -1e4
         next_state = []
+        prev_num_lines = len(self.valid_lines)
         
         lines = CDL.get_lines_from_coeffs(action)
-        self.lines.extend(lines)
-        regions = CDL.create_regions(self.lines)
+        valid_lines = CDL.get_valid_lines(lines)
+        self.valid_lines.append(valid_lines)
+        regions = CDL.create_regions(list(self.valid_lines))
         _reward = -super()._optimizer(regions, scenario)
         
-        if len(lines) == 0 or _reward > self.reward_thres:
+        if len(self.valid_lines) == prev_num_lines or _reward > self.reward_thres:
             done = True
             reward = _reward
-            self.lines = []
+            self.valid_lines.clear()
         
         next_state = self.autoencoder.get_state(regions)
         return reward, next_state, done, regions
@@ -138,15 +131,15 @@ class TD3(CDL):
             shuffled_actions = list(itertools.permutations(self.actions))
             for shuffled_action in shuffled_actions:
                 _state = self.states[0]
+                # Returns default boundary lines
+                self.lines = CDL.get_valid_lines([])
                 for action_idx, _action in enumerate(shuffled_action):
-                    _next_state = []
                     self.lines += CDL.get_lines_from_coeffs(_action)
                     regions = CDL.create_regions(self.lines)
-                    _next_state = self.autoencoder(regions)
+                    _next_state = self.autoencoder.get_state(regions)
 
                     if action_idx == len(shuffled_action) - 1:
                         _reward = self.rewards[-1]
-                        self.lines = []
                         _done = True
                     else:
                         _reward = -1e4
@@ -222,8 +215,9 @@ class TD3(CDL):
                     target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
     
     # Train model on a given scenario
-    def _train(self, scenario):           
-        start_state = self.autoencoder.get_state()
+    def _train(self, scenario):        
+        default_square = CDL.get_valid_lines([])   
+        start_state = self.autoencoder.get_state(default_square)
         self._populate_buffer(scenario, start_state)
         
         rewards = []     

@@ -30,7 +30,6 @@ class CDL:
         self.num_obstacles = num_obstacles
         self.weights = np.array([3, 2, 1.75, 3, 2])
         self.rrt_star = RRTStar(agent_radius, obs_radius)
-        
     
     def _save(self, class_name, scenario):
         directory = f'ma-cdl/languages/history/{class_name}'
@@ -114,8 +113,7 @@ class CDL:
     
     # Create polygonal regions from lines
     @staticmethod
-    def create_regions(lines):
-        valid_lines = CDL.get_valid_lines(lines)
+    def create_regions(valid_lines):
         lines = MultiLineString(valid_lines).buffer(distance=1e-12)
         boundary = lines.convex_hull
         polygons = boundary.difference(lines)
@@ -215,7 +213,8 @@ class CDL:
             print('Generating new language...')
             coeffs = self._generate_optimal_coeffs(scenario)
             lines = CDL.get_lines_from_coeffs(coeffs)
-            self.language = CDL.create_regions(lines)
+            valid_lines = CDL.get_valid_lines(lines)
+            self.language = CDL.create_regions(valid_lines)
             self._save(class_name, scenario)
         
         self._visualize(class_name, scenario)

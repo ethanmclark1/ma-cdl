@@ -8,10 +8,10 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from torch.optim import Adam
 from languages.utils.cdl import CDL
-from torch.utils.data import Dataset, DataLoader
 from languages.utils.networks import Autoencoder
+from torch.utils.data import Dataset, DataLoader, random_split
 
-IMAGE_SIZE = (84, 84)
+IMAGE_SIZE = (48, 48)
 
 class AE:
     def __init__(self, output_dims, rng):
@@ -23,18 +23,18 @@ class AE:
             self._init_hyperparams()
             self._init_wandb()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, 300)
-            self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
+            self.dataset = ImageDataset(rng, 750)
+            self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-5)
             self._train()
             self._save_model()
             
     def _init_hyperparams(self):
-        self.batch_size = 64
-        self.learning_rate = 5e-4
-        self.num_train_epochs = 1000
+        self.batch_size = 16
+        self.learning_rate = 1e-4
+        self.num_train_epochs = 3000
             
     def _init_wandb(self):
-        wandb.init(project='autoencoder', entity='ethanmclark1')
+        wandb.init(project='ma-cdl', entity='ethanmclark1', name='autoencoder')
         config = wandb.config
         config.learning_rate = self.learning_rate
         config.num_train_epochs = self.num_train_epochs
@@ -70,14 +70,15 @@ class AE:
         ax.set_xticks([])
         ax.set_yticks([])
         for region in regions:
-            ax.plot(*region.exterior.xy)
+            ax.plot(*region.exterior.xy, linewidth=2, color='black')
         
         buf = io.BytesIO()
         plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
         buf.seek(0)
         im = Image.open(buf).convert('L')
         pixel_array = np.array(im)
-        pixel_array = np.array(Image.fromarray(pixel_array).resize(IMAGE_SIZE))
+        pixel_array = np.array(Image.fromarray(pixel_array).resize(IMAGE_SIZE)) / 255.0
+        
         plt.clf()
         plt.close()
         
@@ -87,28 +88,61 @@ class AE:
         
     def get_state(self, regions):
         pixel_tensor = self.pixelate(regions)
+        pixel_tensor = pixel_tensor.unsqueeze(0)
         state = self.model.get_encoded(pixel_tensor)
         return state
     
     def _train(self):
-        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
-        
+        # Split the dataset into training and validation sets
+        train_set, val_set = random_split(self.dataset, [int(0.8 * len(self.dataset)), len(self.dataset) - int(0.8 * len(self.dataset))])
+        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
+
+        best_val_loss = float('inf')
+        patience_counter = 0
+        patience_limit = 5
+
         for epoch in range(self.num_train_epochs):
-            for img in dataloader:
-                output = self.model(img)
-                loss = self.loss(img, output)
-                
+            # Training loop
+            for img in train_loader:
+                reconstructed = self.model(img)
+                loss = self.loss(img, reconstructed)
+
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-                
-            print(f'Epoch [{epoch + 1}/{self.num_train_epochs}], Loss: {loss.item():.4f}')
+
+            # Validation loop
+            val_loss = 0
+            with torch.no_grad():
+                for img in val_loader:
+                    reconstructed = self.model(img)
+                    loss = self.loss(img, reconstructed)
+                    val_loss += loss.item()
+
+            val_loss /= len(val_loader)
+            wandb.log({'loss': loss.item(), 'val_loss': val_loss})
+            print(f'Epoch [{epoch + 1}/{self.num_train_epochs}], Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}')
+
+            # Early stopping check
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= patience_limit:
+                    print(f'Early stopping triggered at epoch {epoch + 1}')
+                    break
+
                 
 class ImageDataset(Dataset):
     def __init__(self, rng, num_episodes):
         self.rng = rng
         self.num_episodes = num_episodes
-        self.images = self.generate_images()
+        try:
+            self.images = self.load_images()
+        except:
+            self.images = self.generate_images()
 
     def __len__(self):
         return len(self.images)
@@ -116,9 +150,32 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         return self.images[idx]
     
+    def load_images(self):
+        images = []
+        image_folder = 'ma-cdl/languages/history/images'
+        image_files = sorted(os.listdir(image_folder))
+
+        for image_file in image_files:
+            img_path = os.path.join(image_folder, image_file)
+            img = Image.open(img_path).convert('L')
+            pixel_array = np.array(img)
+            pixel_array = np.array(Image.fromarray(pixel_array).resize(IMAGE_SIZE)) / 255
+            pixel_tensor = torch.from_numpy(pixel_array).float().unsqueeze(0)
+            images.append(pixel_tensor)
+
+        return images
+    
+    def save_image(self, img, idx):
+        save_path = 'ma-cdl/languages/history/images'
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+        img_path = os.path.join(save_path, f'image_{idx}.png')
+        img = Image.fromarray(img.squeeze().numpy().astype(np.uint8))
+        img.save(img_path)
+
     def generate_images(self):
         images = []
-        
+        image_idx = len(images)
         for _ in range(self.num_episodes):
             prev_num_lines = 4
             valid_lines  = set()
@@ -130,7 +187,11 @@ class ImageDataset(Dataset):
                 valid_lines.update(valid)
                 regions = CDL.create_regions(list(valid_lines))
                 pixel_tensor = AE.pixelate(regions)
+                
                 images.append(pixel_tensor)
+                self.save_image(pixel_tensor, image_idx)
+                image_idx += 1
+                
                 if len(valid_lines) == prev_num_lines:
                     done = True
                     continue

@@ -13,21 +13,23 @@ class Autoencoder(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
             nn.Flatten(),
-            nn.Linear(4*21*21, 256),
+            nn.Linear(4 * 12 * 12, 256),
             nn.ReLU(),
             nn.Linear(256, output_dims)
-        )        
+        )
+        
         self.decoder = nn.Sequential(
             nn.Linear(output_dims, 256),
             nn.ReLU(),
-            nn.Linear(256, 4*21*21),
+            nn.Linear(256, 4 * 12 * 12),
             nn.ReLU(),
-            nn.Unflatten(1, (4, 21, 21)),
+            nn.Unflatten(1, (4, 12, 12)),
             nn.ConvTranspose2d(4, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Sigmoid()
         )
+
     
     def forward(self, x):
         encoded = self.encoder(x)

@@ -36,8 +36,8 @@ class TD3(CDL):
         self.dones = []
         self.valid_lines = set()
     
-        self.state_dims = 64
         self.action_dims = 3
+        self.state_dims = 128
         
         self._init_hyperparams()
         self._init_wandb()
@@ -70,7 +70,7 @@ class TD3(CDL):
         self.policy_update_freq = 2
         
     def _init_wandb(self):
-        wandb.init(project='td3', entity='ethanmclark1')
+        wandb.init(project='ma-cdl', entity='ethanmclark1', name='TD3')
         config = wandb.config
         config.tau = self.tau
         config.gamma = self.gamma 
@@ -103,11 +103,11 @@ class TD3(CDL):
         done = False
         reward = -1e4
         next_state = []
-        prev_num_lines = len(self.valid_lines)
-        
+        prev_num_lines = max(len(self.valid_lines), 4)
+                
         lines = CDL.get_lines_from_coeffs(action)
         valid_lines = CDL.get_valid_lines(lines)
-        self.valid_lines.append(valid_lines)
+        self.valid_lines.update(valid_lines)
         regions = CDL.create_regions(list(self.valid_lines))
         _reward = -super()._optimizer(regions, scenario)
         
@@ -132,10 +132,12 @@ class TD3(CDL):
             for shuffled_action in shuffled_actions:
                 _state = self.states[0]
                 # Returns default boundary lines
-                self.lines = CDL.get_valid_lines([])
+                self.valid_lines = set(CDL.get_valid_lines([]))
                 for action_idx, _action in enumerate(shuffled_action):
-                    self.lines += CDL.get_lines_from_coeffs(_action)
-                    regions = CDL.create_regions(self.lines)
+                    lines = CDL.get_lines_from_coeffs(_action)
+                    valid_lines = CDL.get_valid_lines(lines)
+                    self.valid_lines.update(valid_lines)
+                    regions = CDL.create_regions(list(self.valid_lines))
                     _next_state = self.autoencoder.get_state(regions)
 
                     if action_idx == len(shuffled_action) - 1:
@@ -216,7 +218,8 @@ class TD3(CDL):
     
     # Train model on a given scenario
     def _train(self, scenario):        
-        default_square = CDL.get_valid_lines([])   
+        valid_lines = CDL.get_valid_lines([])   
+        default_square = CDL.create_regions(valid_lines)
         start_state = self.autoencoder.get_state(default_square)
         self._populate_buffer(scenario, start_state)
         

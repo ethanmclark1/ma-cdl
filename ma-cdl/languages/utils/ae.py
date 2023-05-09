@@ -11,7 +11,7 @@ from languages.utils.cdl import CDL
 from languages.utils.networks import Autoencoder
 from torch.utils.data import Dataset, DataLoader, random_split
 
-IMAGE_SIZE = (48, 48)
+IMAGE_SIZE = (64, 64)
 
 class AE:
     def __init__(self, output_dims, rng):
@@ -24,14 +24,14 @@ class AE:
             self._init_wandb()
             self.loss = torch.nn.MSELoss()
             self.dataset = ImageDataset(rng, 750)
-            self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-5)
+            self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
             self._train()
             self._save_model()
             
     def _init_hyperparams(self):
         self.batch_size = 16
         self.learning_rate = 1e-4
-        self.num_train_epochs = 3000
+        self.num_train_epochs = 1000
             
     def _init_wandb(self):
         wandb.init(project='ma-cdl', entity='ethanmclark1', name='autoencoder')
@@ -77,7 +77,7 @@ class AE:
         buf.seek(0)
         im = Image.open(buf).convert('L')
         pixel_array = np.array(im)
-        pixel_array = np.array(Image.fromarray(pixel_array).resize(IMAGE_SIZE)) / 255.0
+        pixel_array = np.array(Image.fromarray(pixel_array).resize(IMAGE_SIZE))
         
         plt.clf()
         plt.close()
@@ -100,7 +100,7 @@ class AE:
 
         best_val_loss = float('inf')
         patience_counter = 0
-        patience_limit = 5
+        patience_limit = 10
 
         for epoch in range(self.num_train_epochs):
             # Training loop
@@ -133,8 +133,33 @@ class AE:
                 if patience_counter >= patience_limit:
                     print(f'Early stopping triggered at epoch {epoch + 1}')
                     break
+                        
+        # Choose a batch of images from the validation set
+        images = next(iter(val_loader))
 
-                
+        # Pass the images through the autoencoder
+        with torch.no_grad():
+            reconstructed_images = self.model(images)
+
+        # Plot the original images and reconstructed images side by side
+        n = 5  # Number of images to display
+        plt.figure(figsize=(20, 4))
+        for i in range(n):
+            # Display original image
+            ax = plt.subplot(2, n, i + 1)
+            plt.imshow(images[i].squeeze().numpy(), cmap='gray')
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+
+            # Display reconstructed image
+            ax = plt.subplot(2, n, i + 1 + n)
+            plt.imshow(reconstructed_images[i].squeeze().numpy(), cmap='gray')
+            ax.get_xaxis().set_visible(False)
+            ax.get_yaxis().set_visible(False)
+        plt.show()
+        a=3
+
+
 class ImageDataset(Dataset):
     def __init__(self, rng, num_episodes):
         self.rng = rng
@@ -188,7 +213,7 @@ class ImageDataset(Dataset):
                 regions = CDL.create_regions(list(valid_lines))
                 pixel_tensor = AE.pixelate(regions)
                 
-                images.append(pixel_tensor)
+                images.append(pixel_tensor / 255)
                 self.save_image(pixel_tensor, image_idx)
                 image_idx += 1
                 

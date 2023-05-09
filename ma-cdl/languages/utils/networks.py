@@ -6,14 +6,16 @@ class Autoencoder(nn.Module):
     def __init__(self, output_dims):
         super(Autoencoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, padding=1),
+            nn.Conv2d(1, 16, kernel_size=3, padding=1),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(8, 4, kernel_size=3, padding=1),
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
             nn.Flatten(),
-            nn.Linear(4 * 12 * 12, 256),
+            nn.Linear(32 * 16 * 16, 256),
             nn.ReLU(),
             nn.Linear(256, output_dims)
         )
@@ -21,16 +23,16 @@ class Autoencoder(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(output_dims, 256),
             nn.ReLU(),
-            nn.Linear(256, 4 * 12 * 12),
+            nn.Linear(256, 32 * 16 * 16),
             nn.ReLU(),
-            nn.Unflatten(1, (4, 12, 12)),
-            nn.ConvTranspose2d(4, 8, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Unflatten(1, (32, 16, 16)),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
-            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(16, 1, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Sigmoid()
         )
-
-    
+        
     def forward(self, x):
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)

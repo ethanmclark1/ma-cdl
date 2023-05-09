@@ -1,6 +1,5 @@
 import io
 import os
-import wandb
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,7 +20,6 @@ class AE:
             self.model.load_state_dict(state_dict)
         except:
             self._init_hyperparams()
-            self._init_wandb()
             self.loss = torch.nn.MSELoss()
             self.dataset = ImageDataset(rng, 750)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
@@ -33,15 +31,9 @@ class AE:
         self.learning_rate = 1e-4
         self.num_train_epochs = 1000
             
-    def _init_wandb(self):
-        wandb.init(project='ma-cdl', entity='ethanmclark1', name='autoencoder')
-        config = wandb.config
-        config.learning_rate = self.learning_rate
-        config.num_train_epochs = self.num_train_epochs
-            
     def _save_model(self):
         directory = 'ma-cdl/languages/history'
-        filename = 'ae.pth'
+        filename = f'{self.__class__.__name__}.pth'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -121,7 +113,6 @@ class AE:
                     val_loss += loss.item()
 
             val_loss /= len(val_loader)
-            wandb.log({'loss': loss.item(), 'val_loss': val_loss})
             print(f'Epoch [{epoch + 1}/{self.num_train_epochs}], Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}')
 
             # Early stopping check
@@ -157,8 +148,6 @@ class AE:
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
         plt.show()
-        a=3
-
 
 class ImageDataset(Dataset):
     def __init__(self, rng, num_episodes):

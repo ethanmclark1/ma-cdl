@@ -68,18 +68,9 @@ class Scenario(BaseScenario):
         world.landmarks[0].state.p_pos = np_random.uniform(*zip(*world.goal_constr))
         
         # set state of obstacles
-        if isinstance(world.obs_constr, tuple):
-            for i in range(len(world.landmarks[1:])):
-                world.landmarks[i+1].state.p_vel = np.zeros(world.dim_p)
-                world.landmarks[i+1].state.p_pos = np_random.uniform(*zip(*world.obs_constr))
-        else:
-            for i in range(len(world.landmarks[1:])):
-                if i < len(world.landmarks[1:]) / 2:
-                    world.landmarks[i+1].state.p_vel = np.zeros(world.dim_p)
-                    world.landmarks[i+1].state.p_pos = np_random.uniform(*zip(*world.obs_constr[0]))
-                else:
-                    world.landmarks[i+1].state.p_vel = np.zeros(world.dim_p)
-                    world.landmarks[i+1].state.p_pos = np_random.uniform(*zip(*world.obs_constr[1]))
+        for i in range(len(world.landmarks[1:])):
+            world.landmarks[i+1].state.p_vel = np.zeros(world.dim_p)
+            world.landmarks[i+1].state.p_pos = np_random.uniform(*zip(*world.obs_constr))
             
     def reward(self, agent, world):
         return 0

@@ -122,7 +122,6 @@ class CDL:
     
     # Generate points under specified constraint
     def _generate_points(self, scenario):
-        obstacles = []    
         start_constr = problem_scenarios[scenario]['start']
         goal_constr = problem_scenarios[scenario]['goal']
         obs_constr = problem_scenarios[scenario]['obs']
@@ -131,12 +130,8 @@ class CDL:
         goal = np.random.uniform(*zip(*goal_constr))
         
         # set state of obstacles
-        if isinstance(obs_constr, tuple):
-            obstacles = [np.random.uniform(*zip(*obs_constr)) for _ in range(self.num_obstacles)]
-        else:
-            obstacles = [np.random.uniform(*zip(*obs_constr[0])) for _ in range(self.num_obstacles // 2)]
-            obstacles += [np.random.uniform(*zip(*obs_constr[1])) for _ in range(self.num_obstacles // 2)]
-        
+        obstacles = [np.random.uniform(*zip(*obs_constr)) for _ in range(self.num_obstacles)]
+
         return start, goal, obstacles
     
     """

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from languages.utils.cdl import CDL
 from languages.utils.networks import Autoencoder
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -21,8 +22,9 @@ class AE:
         except:
             self._init_hyperparams()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, 750)
+            self.dataset = ImageDataset(rng, 1000)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
+            self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
             self._train()
             self._save_model()
             
@@ -114,6 +116,8 @@ class AE:
 
             val_loss /= len(val_loader)
             print(f'Epoch [{epoch + 1}/{self.num_train_epochs}], Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}')
+            
+            self.scheduler.step(val_loss)
 
             # Early stopping check
             if val_loss < best_val_loss:
@@ -191,9 +195,10 @@ class ImageDataset(Dataset):
         images = []
         image_idx = len(images)
         for _ in range(self.num_episodes):
+            done = False
+            num_action = 1
             prev_num_lines = 4
             valid_lines  = set()
-            done = False
             while not done: 
                 action = self.rng.uniform(-1, 1, 3)
                 line = CDL.get_lines_from_coeffs(action)
@@ -206,9 +211,11 @@ class ImageDataset(Dataset):
                 self.save_image(pixel_tensor, image_idx)
                 image_idx += 1
                 
-                if len(valid_lines) == prev_num_lines:
+                if len(valid_lines) == prev_num_lines or num_action == 7:
                     done = True
                     continue
+                
                 prev_num_lines = len(valid_lines)
+                num_action += 1
                 
         return images

@@ -4,7 +4,6 @@ import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 
-from math import inf
 from itertools import product
 from statistics import mean, variance
 from languages.utils.rrt_star import RRTStar
@@ -172,7 +171,7 @@ class CDL:
         4. Mean of nonnavigable area
         5. Variance of nonnavigable area
     """
-    def _optimizer(self, regions, scenario):
+    def _optimizer(self, regions, scenario):            
         i = 0
         nonnavigable, unsafe = [], []
         while i < self.configs_to_consider:
@@ -189,9 +188,10 @@ class CDL:
         nonnavigable_mu = mean(nonnavigable)
         nonnavigable_var = variance(nonnavigable)
 
-        criterion = np.array([unsafe_mu, unsafe_var, efficiency, nonnavigable_mu, nonnavigable_var])
-        scenario_cost = np.sum(self.weights * criterion)
-        if scenario_cost == inf:
+        if nonnavigable_mu < 3.9:
+            criterion = np.array([unsafe_mu, unsafe_var, efficiency, nonnavigable_mu, nonnavigable_var])
+            scenario_cost = np.sum(self.weights * criterion)
+        else:
             scenario_cost = 10e3
         return scenario_cost
         

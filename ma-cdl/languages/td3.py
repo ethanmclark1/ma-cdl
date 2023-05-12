@@ -41,8 +41,8 @@ class TD3(CDL):
         
         self._init_hyperparams()
         self._init_wandb()
+        self.rng = np.random.default_rng()
         self.replay_buffer = ReplayBuffer()
-        self.rng = np.random.default_rng(42)
         self.autoencoder = AE(self.state_dims, self.rng)
         
         self.actor = Actor(self.state_dims, self.action_dims, self.action_range)
@@ -60,13 +60,12 @@ class TD3(CDL):
         self.state_dim = 32
         self.max_actions = 6
         self.action_range = 1
-        self.num_dummy = 375000
+        self.num_dummy = 350000
         self.noise_clip = 0.025
         self.reward_thres = -20
         self.num_episodes = 1000
         self.policy_noise = 0.005
         self.num_iterations = 100
-        self.input_dims = (84, 84)
         self.policy_update_freq = 2
         
     def _init_wandb(self):
@@ -99,14 +98,14 @@ class TD3(CDL):
         wandb.log({"image": wandb.Image(pil_image)})
     
     # Overlay lines in the environment
-    def _step(self, scenario, action):
+    def _step(self, scenario, action, num_action):
+        reward = 0
         done = False
-        reward = -1e4
         next_state = []
         prev_num_lines = max(len(self.valid_lines), 4)
                 
-        lines = CDL.get_lines_from_coeffs(action)
-        valid_lines = CDL.get_valid_lines(lines)
+        line = CDL.get_lines_from_coeffs(action)
+        valid_lines = CDL.get_valid_lines(line)
         self.valid_lines.update(valid_lines)
         regions = CDL.create_regions(list(self.valid_lines))
         _reward = -super()._optimizer(regions, scenario)
@@ -115,7 +114,14 @@ class TD3(CDL):
             done = True
             reward = _reward
             self.valid_lines.clear()
-        
+        elif num_action > 4:
+            if num_action != 7:
+                reward = -10
+            else:
+                done = True
+                reward = _reward
+                self.valid_lines.clear()
+            
         next_state = self.autoencoder.get_state(regions)
         return reward, next_state, done, regions
     
@@ -139,13 +145,8 @@ class TD3(CDL):
                     self.valid_lines.update(valid_lines)
                     regions = CDL.create_regions(list(self.valid_lines))
                     _next_state = self.autoencoder.get_state(regions)
-
-                    if action_idx == len(shuffled_action) - 1:
-                        _reward = self.rewards[-1]
-                        _done = True
-                    else:
-                        _reward = -1e4
-                        _done = False               
+                    _reward = self.rewards[action_idx]
+                    _done = True if action_idx == len(shuffled_action) - 1 else False
                              
                     self.replay_buffer.add(_state, _action, _reward, _next_state, _done)
                     _state = _next_state
@@ -155,13 +156,19 @@ class TD3(CDL):
     
     # Populate replay buffer with dummy transitions
     def _populate_buffer(self, scenario, start_state):
+        num_action = 1
         state = start_state
         while len(self.replay_buffer) < self.num_dummy:
             action = self.rng.uniform(-self.action_range, self.action_range, size=self.action_dims)
-            reward, next_state, done, _ = self._step(scenario, action)
+            reward, next_state, done, _ = self._step(scenario, action, num_action)
             self._remember(state, action, reward, next_state, done)
             
-            state = start_state if done else next_state
+            if done: 
+                state = start_state
+                num_action = 1
+            else:
+                state = next_state
+                num_action += 1
                     
     # Select an action (coefficients of a linear line)
     def _select_action(self, state, noise=0.05):

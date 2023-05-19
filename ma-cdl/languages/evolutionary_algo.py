@@ -7,9 +7,9 @@ from languages.utils.cdl import CDL
 
 """Evolutionary Algorithm"""
 class EA(CDL):
-    def __init__(self, agent_radius, obs_radius, num_obstacles):
-        super().__init__(agent_radius, obs_radius, num_obstacles)
-        
+    def __init__(self, agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles):
+        super().__init__(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles)
+                
     def _optimizer(self, coeffs, scenario):
         lines = CDL.get_lines_from_coeffs(coeffs)
         valid_lines = CDL.get_valid_lines(lines)

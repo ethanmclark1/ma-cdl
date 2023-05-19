@@ -1,12 +1,10 @@
-import os
-import pickle
 import numpy as np
 
 from math import inf
 from scipy.optimize import minimize
 from languages.utils.cdl import CDL
+from Signal8 import get_problem_list
 from sklearn.preprocessing import OneHotEncoder
-from environment.utils.problems import problem_scenarios
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
 
@@ -16,10 +14,11 @@ COST_THRESH = 20
 
 """Infinitely Armed Bandit"""
 class Bandit(CDL):
-    def __init__(self, agent_radius, obs_radius, num_obstacles):
-        super().__init__(agent_radius, obs_radius, num_obstacles)
+    def __init__(self, agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles):
+        super().__init__(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles)
         self.arms = []
         self.coeffs = []
+        problem_scenarios = get_problem_list()
         self.X = {scenario: [np.empty((0, 12)) for _ in range(MAX_ARMS)] for scenario in problem_scenarios}
         self.y = {scenario: [np.empty((0,)) for _ in range(MAX_ARMS)] for scenario in problem_scenarios}
         self._create_arm()

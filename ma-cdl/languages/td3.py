@@ -24,11 +24,10 @@ from languages.utils.cdl import CDL
 from languages.utils.networks import Actor, Critic
 from languages.utils.replay_buffer import ReplayBuffer
 
-
 """Twin Delayed Deep Deterministic Policy Gradient (TD3)"""
 class TD3(CDL):
-    def __init__(self, agent_radius, obs_radius, num_obstacles):
-        super().__init__(agent_radius, obs_radius, num_obstacles)
+    def __init__(self, agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles):
+        super().__init__(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles)
         self.states = []
         self.actions = []
         self.rewards = []
@@ -57,10 +56,9 @@ class TD3(CDL):
         self.tau = 0.005
         self.gamma = 0.99
         self.batch_size = 64
-        self.state_dim = 32
         self.max_actions = 6
         self.action_range = 1
-        self.num_dummy = 350000
+        self.num_dummy = 100
         self.noise_clip = 0.025
         self.reward_thres = -20
         self.num_episodes = 1000
@@ -115,7 +113,7 @@ class TD3(CDL):
             reward = _reward
             self.valid_lines.clear()
         elif num_action > 4:
-            if num_action != 7:
+            if num_action != 6:
                 reward = -10
             else:
                 done = True
@@ -172,9 +170,10 @@ class TD3(CDL):
                     
     # Select an action (coefficients of a linear line)
     def _select_action(self, state, noise=0.05):
+        state = torch.FloatTensor(state)
         action = self.actor(state).data.numpy().flatten()
         if noise != 0:
-            action = (action + self.rng.uniform(0, noise, size=self.action_dim)).clip(-self.action_range, self.action_range)
+            action = (action + self.rng.uniform(0, noise, size=self.action_dims)).clip(-self.action_range, self.action_range)
             
         return action
     
@@ -233,13 +232,15 @@ class TD3(CDL):
         rewards = []     
         for episode in range(1000):
             done = False
+            num_action = 1
             state = start_state
             while not done: 
                 action = self._select_action(state)
-                reward, next_state, done, regions = self._step(scenario, action)  
+                reward, next_state, done, regions = self._step(scenario, action, num_action)  
                 self._remember(state, action, reward, next_state, done)         
                 self._learn()
                 state = next_state
+                num_action += 1
                 
             rewards.append(reward)
             avg_reward = np.mean(rewards[-25:])

@@ -1,56 +1,52 @@
 import copy
-import cProfile
+
+import Signal8
 import numpy as np
 import matplotlib.pyplot as plt
 
 from itertools import product
-from arguments import get_arguments
 
 from agents.speaker import Speaker
 from agents.listener import Listener
 
-from environment import simple_path
-from environment.utils.problems import problem_scenarios
-
 from languages.td3 import TD3
+from languages.bandit import Bandit
 from languages.evolutionary_algo import EA
-from languages.bandit import Bandit, ContextualBandit
 
 class MA_CDL2():
-    def __init__(self, args):
-        self.num_episodes = 10
-        self.env = simple_path.env(args)
+    def __init__(self):
+        self.env = Signal8.env(dynamic_obstacles=True)
         
-        obs_radius = self.env.metadata['obs_radius']
-        num_obs = self.env.metadata['num_obstacles']
         agent_radius = self.env.metadata['agent_radius']
+        num_obstacles = self.env.metadata['num_obstacles']
+        obstacle_radius = self.env.metadata['obstacle_radius']
+        dynamic_obstacles = self.env.metadata['dynamic_obstacles']
         
-        self.ea = EA(agent_radius, obs_radius, num_obs)
-        self.td3 = TD3(agent_radius, obs_radius, num_obs)
-        self.bandit = Bandit(agent_radius, obs_radius, num_obs)
-        self.contextual_bandit = ContextualBandit(agent_radius, obs_radius, num_obs)
-        
+        self.ea = EA(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles)
+        self.td3 = TD3(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles)
+        self.bandit = Bandit(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles) 
         self.speaker = Speaker()
         self.listener = Listener()
 
     def act(self):
-        approaches = ['ea', 'td3', 'bandit', 'contextual_bandit']
-        directions = {approach: None for approach in approaches}
+        approaches = ['ea', 'td3', 'bandit']
+        problem_scenarios = Signal8.get_problem_list()
         languages = {approach: None for approach in approaches}
+        directions = {approach: None for approach in approaches}
         direction_len = {approach: {scenario: [] for scenario in problem_scenarios} for approach in approaches}
         results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
         
-        for _, scenario in product(range(self.num_episodes), problem_scenarios):
+        for _, scenario in product(range(10), problem_scenarios):
             languages['td3'] = self.td3.get_language(scenario)
             languages['bandit'] = self.bandit.get_language(scenario)
-            languages['contextual_bandit'] = self.contextual_bandit.get_language(scenario)
+            languages['ea'] = self.ea.get_language(scenario)
             
             self.env.reset(options={'problem_name': scenario})
             start, goal, obstacles = self.env.unwrapped.get_init_conditions()
             
-            # TODO: Fix this
             directions['ea'] = self.speaker.direct(start, goal, obstacles, languages['ea'])    
             directions['td3'] = self.speaker.direct(start, goal, obstacles, languages['td3'])    
+            directions['bandit'] = self.speaker.direct(start, goal, obstacles, languages['bandit'])
                                     
             world = self.env.unwrapped.world
             backup = copy.deepcopy(world)
@@ -140,7 +136,6 @@ class MA_CDL2():
         plt.show()
 
 if __name__ == '__main__':
-    args = get_arguments()
-    ma_cdl2 = MA_CDL2(args)
+    ma_cdl2 = MA_CDL2()
     results, avg_direction_len = ma_cdl2.act()
     ma_cdl2.plot(results, avg_direction_len)

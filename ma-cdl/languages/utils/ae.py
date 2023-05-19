@@ -1,6 +1,7 @@
 import io
 import os
 import torch
+import wandb
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -21,6 +22,7 @@ class AE:
             self.model.load_state_dict(state_dict)
         except:
             self._init_hyperparams()
+            self._init_wandb()
             self.loss = torch.nn.MSELoss()
             self.dataset = ImageDataset(rng, 1000)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
@@ -32,6 +34,12 @@ class AE:
         self.batch_size = 16
         self.learning_rate = 1e-4
         self.num_train_epochs = 1000
+    
+    def _init_wandb(self):
+        wandb.init(project='ma-cdl', entity='ethanmclark1', name='autoencoder')
+        config = wandb.config
+        config.learning_rate = self.learning_rate
+        config.num_train_epochs = self.num_train_epochs
             
     def _save_model(self):
         directory = 'ma-cdl/languages/history'
@@ -115,6 +123,7 @@ class AE:
                     val_loss += loss.item()
 
             val_loss /= len(val_loader)
+            wandb.log({'loss': loss.item(), 'val_loss': val_loss})
             print(f'Epoch [{epoch + 1}/{self.num_train_epochs}], Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}')
             
             self.scheduler.step(val_loss)
@@ -211,7 +220,7 @@ class ImageDataset(Dataset):
                 self.save_image(pixel_tensor, image_idx)
                 image_idx += 1
                 
-                if len(valid_lines) == prev_num_lines or num_action == 7:
+                if len(valid_lines) == prev_num_lines or num_action == 6:
                     done = True
                     continue
                 

@@ -4,11 +4,12 @@ import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 
+from shapely import points
 from itertools import product
 from Signal8 import get_problem
 from statistics import mean, variance
 from languages.utils.rrt_star import RRTStar
-from shapely.geometry import Point, LineString, MultiLineString, Polygon
+from shapely.geometry import LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
 
@@ -22,6 +23,7 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 """"Base class for Context-Dependent Languages (EA, TD3, and Bandits)"""
 class CDL:
     def __init__(self, agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles):
+        self.max_lines = 6
         self.language = None
         self.configs_to_consider = 30
         self.agent_radius = agent_radius
@@ -72,23 +74,18 @@ class CDL:
     def get_lines_from_coeffs(coeffs):
         lines = []
         equations = np.reshape(coeffs, (-1, 3))
-
         for equation in equations:
             a, b, c = equation
-
-            if b == 0:  # Avoid division by zero
+            # Indicates an infinite slope (invalid line)
+            if b == 0:
                 continue
-
+            
             slope = a / -b
-            abs_slope = abs(slope)
-
-            if abs_slope >= 1:
-                # Find values of y when x = -1, 1
+            if abs(slope) >= 1:
                 y1 = (-a + c) / -b
                 y2 = (a + c) / -b
                 start, end = (-1, y1), (1, y2)
             else:
-                # Find values of x when y = -1, 1
                 x1 = (-b + c) / -a
                 x2 = (b + c) / -a
                 start, end = (x1, -1), (x2, 1)
@@ -118,7 +115,7 @@ class CDL:
         polygons = boundary.difference(lines)
         regions = [polygons] if polygons.geom_type == 'Polygon' else list(polygons.geoms)
         return regions 
-    
+                
     # Generate configuration under specified constraint
     def _generate_configuration(self, scenario):
         problem = get_problem(scenario, self.dynamic_obstacles)
@@ -130,16 +127,23 @@ class CDL:
         
         static_obstacle_constr = problem['static_obs']
         if self.dynamic_obstacles:
+            dynamic_obs = np.empty((0, 2))
             dynamic_obstacle_constr = problem['dynamic_obs']
+            # Generate random points under constraints to simulate movement of dynamic_obs
+            for constr in dynamic_obstacle_constr:
+                x_points = np.random.uniform(constr[0][0], constr[0][1], size=25)
+                y_points = np.random.uniform(constr[1][0], constr[1][1], size=25)
+                obs = np.column_stack((x_points, y_points))
+                dynamic_obs = np.append(dynamic_obs, obs, axis=0)
+                
             num_dynamic = self.num_obstacles // 2
             num_static = self.num_obstacles - num_dynamic
-            static_obs = [np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(num_static)]
-            dynamic_obs = [np.random.uniform(*zip(*dynamic_obstacle_constr)) for _ in range(num_dynamic)]
+            static_obs = np.array([np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(num_static)])
+            obstacles = np.concatenate((static_obs, dynamic_obs), axis=0)
         else:
-            static_obs = [np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(self.num_obstacles)]
-            dynamic_obs = []
+            obstacles = np.array([np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(self.num_obstacles)])
         
-        return start, goal, static_obs, dynamic_obs
+        return start, goal, obstacles
     
     """
     Calculate cost of a configuration (i.e. start, goal, and obstacles)
@@ -147,10 +151,9 @@ class CDL:
         1. Unsafe area caused by obstacles
         2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
     """
-    # TODO: Figure out dynamic obstacles
-    def _problem_cost(self, start, goal, static_obs, dynamic_obs, regions):
-        obstacles = []
-        obstacle_points = [Point(obs) for obs in obstacles]
+    # TODO: Figure out how to handle dynamic_obs in safety consideration
+    def _problem_cost(self, start, goal, obstacles, regions):       
+        obstacle_points = points(obstacles)
         obstacles_idx = set(idx for idx, region in enumerate(regions)
                             for obs in obstacle_points if region.contains(obs))
         nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
@@ -185,8 +188,8 @@ class CDL:
         i = 0
         nonnavigable, unsafe = [], []
         while i < self.configs_to_consider:
-            start, goal, static_obs, dynamic_obs = self._generate_configuration(scenario)
-            problem_cost = self._problem_cost(start, goal, static_obs, dynamic_obs, regions)
+            start, goal, obstacles = self._generate_configuration(scenario)
+            problem_cost = self._problem_cost(start, goal, obstacles, regions)
             if problem_cost:
                 nonnavigable.append(problem_cost[0])
                 unsafe.append(problem_cost[1])

@@ -56,9 +56,8 @@ class TD3(CDL):
         self.tau = 0.005
         self.gamma = 0.99
         self.batch_size = 64
-        self.max_actions = 6
         self.action_range = 1
-        self.num_dummy = 100
+        self.num_dummy = 150000
         self.noise_clip = 0.025
         self.reward_thres = -20
         self.num_episodes = 1000
@@ -113,12 +112,12 @@ class TD3(CDL):
             reward = _reward
             self.valid_lines.clear()
         elif num_action > 4:
-            if num_action != 6:
-                reward = -10
-            else:
+            if num_action == self.max_lines:
                 done = True
                 reward = _reward
                 self.valid_lines.clear()
+            else:
+                reward = -10
             
         next_state = self.autoencoder.get_state(regions)
         return reward, next_state, done, regions

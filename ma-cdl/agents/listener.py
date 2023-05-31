@@ -11,7 +11,7 @@ class Listener(BaseAgent):
     def _generate_constraints(self):
         a=3
             
-    def get_action(self, observation, goal, directions, env):
+    def get_action(self, observation, goal, directions):
         observation = observation[0:2]
         
         obs_region = self.localize(observation)
@@ -24,5 +24,5 @@ class Listener(BaseAgent):
             next_region = self.language[label]
             target = next_region.centroid
         
-        action = super().get_action(observation, target, env)
+        action = super().get_action(observation, target)
         return action

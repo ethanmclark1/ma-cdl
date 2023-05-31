@@ -4,12 +4,13 @@ import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 
+from rtree import index
 from shapely import points
 from itertools import product
 from Signal8 import get_problem
 from statistics import mean, variance
 from languages.utils.rrt_star import RRTStar
-from shapely.geometry import LineString, MultiLineString, Polygon
+from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
 
@@ -22,14 +23,12 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 """"Base class for Context-Dependent Languages (EA, TD3, and Bandits)"""
 class CDL:
-    def __init__(self, agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles):
-        self.max_lines = 6
+    def __init__(self, agent_radius, obstacle_radius):
+        self.max_lines = 7
         self.language = None
         self.configs_to_consider = 30
         self.agent_radius = agent_radius
-        self.num_obstacles = num_obstacles
         self.obstacle_radius = obstacle_radius
-        self.dynamic_obstacles = dynamic_obstacles
         self.weights = np.array([3, 2, 1.75, 3, 2])
         self.rrt_star = RRTStar(agent_radius, obstacle_radius)
     
@@ -118,8 +117,9 @@ class CDL:
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, scenario):
-        problem = get_problem(scenario, self.dynamic_obstacles)
+        problem = get_problem(scenario)
         
+        dynamic_obs = np.empty((0, 2))
         start_constr = problem['start']
         goal_constr = problem['goal']
         start = np.random.uniform(*zip(*start_constr))
@@ -127,49 +127,67 @@ class CDL:
         
         static_obstacle_constr = problem['static_obs']
         if self.dynamic_obstacles:
-            dynamic_obs = np.empty((0, 2))
             dynamic_obstacle_constr = problem['dynamic_obs']
             # Generate random points under constraints to simulate movement of dynamic_obs
             for constr in dynamic_obstacle_constr:
-                x_points = np.random.uniform(constr[0][0], constr[0][1], size=25)
-                y_points = np.random.uniform(constr[1][0], constr[1][1], size=25)
-                obs = np.column_stack((x_points, y_points))
+                x_points = np.linspace(constr[0][0], constr[0][1], num=25)
+                y_points = np.linspace(constr[1][0], constr[1][1], num=25)
+                random_indices = np.random.permutation(len(x_points))
+                shuffled_x = x_points[random_indices]
+                shuffled_y = y_points[random_indices]
+                obs = np.column_stack((shuffled_x, shuffled_y))
                 dynamic_obs = np.append(dynamic_obs, obs, axis=0)
                 
             num_dynamic = self.num_obstacles // 2
             num_static = self.num_obstacles - num_dynamic
             static_obs = np.array([np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(num_static)])
-            obstacles = np.concatenate((static_obs, dynamic_obs), axis=0)
         else:
-            obstacles = np.array([np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(self.num_obstacles)])
+            static_obs = np.array([np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(self.num_obstacles)])
         
-        return start, goal, obstacles
+        return start, goal, static_obs, dynamic_obs
+    
+    # Create RTree index to more efficiently search points
+    def _create_index(self, obstacle_points, regions):
+        rtree = index.Index()
+        for region_idx, region in enumerate(regions):
+            rtree.insert(region_idx, region.bounds)
+
+        obstacles_idx = set()
+        for obs in obstacle_points:
+            for region_idx in rtree.intersection((obs.x, obs.y)):
+                if regions[region_idx].contains(obs):
+                    obstacles_idx.add(region_idx)
+        
+        return obstacles_idx, rtree
     
     """
     Calculate cost of a configuration (i.e. start, goal, and obstacles)
     with respect to the regions and positions under some positional constraints: 
-        1. Unsafe area caused by obstacles
+        1. Unsafe area caused by all obstacles
         2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
     """
-    # TODO: Figure out how to handle dynamic_obs in safety consideration
-    def _problem_cost(self, start, goal, obstacles, regions):       
+    def _problem_cost(self, start, goal, static_obs, dynamic_obs, regions):       
+        obstacles = np.concatenate((static_obs, dynamic_obs))
         obstacle_points = points(obstacles)
-        obstacles_idx = set(idx for idx, region in enumerate(regions)
-                            for obs in obstacle_points if region.contains(obs))
-        nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
         
-        path = self.rrt_star.plan(start, goal, obstacles)
-        if path is None: return None
+        all_obs_idx, rtree = self._create_index(obstacle_points, regions)
+        nonnavigable = sum(regions[idx].area for idx in all_obs_idx)
+        
+        path = self.rrt_star.plan(start, goal, static_obs)
+        if path is None: return 4, 10
+        
+        static_obs_points = points(static_obs)
+        static_obs_idx, _ = self._create_index(static_obs_points, regions)
 
         unsafe = 0
-        num_path_checks = 15
-        path_length = len(path)
-        significand = path_length // num_path_checks
+        num_path_checks = 10
+        significand = len(path) // num_path_checks
         
-        for idx in range(num_path_checks):
-            path_point = path[idx * significand]
-            for region_idx, region in enumerate(regions):
-                if region.contains(Point(path_point)) and region_idx in obstacles_idx:
+        for i in range(num_path_checks):
+            path_point = path[i * significand]
+            point = Point(path_point)            
+            for region_idx in rtree.intersection((point.x, point.y)):
+                if regions[region_idx].contains(point) and region_idx in static_obs_idx:
                     unsafe += 1
                     break
 
@@ -188,8 +206,8 @@ class CDL:
         i = 0
         nonnavigable, unsafe = [], []
         while i < self.configs_to_consider:
-            start, goal, obstacles = self._generate_configuration(scenario)
-            problem_cost = self._problem_cost(start, goal, obstacles, regions)
+            start, goal, static_obs, dynamic_obs = self._generate_configuration(scenario)
+            problem_cost = self._problem_cost(start, goal, static_obs, dynamic_obs, regions)
             if problem_cost:
                 nonnavigable.append(problem_cost[0])
                 unsafe.append(problem_cost[1])

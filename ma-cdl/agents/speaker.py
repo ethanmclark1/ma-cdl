@@ -6,7 +6,10 @@ class Speaker(BaseAgent):
     def __init__(self):
         super().__init__()
         
-    def direct(self, start_pos, goal_pos, obstacles, language):
+    def direct(self, entities, language):
+        agent_pos = entities['agents']
+        goal_pos = entities['goals']
+        obs_pos = entities['obstacles']
         start_idx = self.localize(Point(start_pos), language)
         goal_idx = self.localize(Point(goal_pos), language)
         obstacles = [Point(obs) for obs in obstacles]

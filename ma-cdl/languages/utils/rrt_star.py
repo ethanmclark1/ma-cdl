@@ -173,9 +173,7 @@ class RRTStar():
         return math.hypot(dx, dy)
 
     def search_best_goal_node(self):
-        dist_to_goal_list = [
-            self.calc_dist_to_goal(n.x, n.y) for n in self.node_list
-        ]
+        dist_to_goal_list = [self.calc_dist_to_goal(n.x, n.y) for n in self.node_list]
         goal_inds = [
             dist_to_goal_list.index(i) for i in dist_to_goal_list
             if i <= self.expand_dis
@@ -290,9 +288,9 @@ class RRTStar():
             d_list = [dx * dx + dy * dy for (dx, dy) in zip(dx_list, dy_list)]
 
             if min(d_list) <= (size+robot_radius)**2:
-                return False  # collision
+                return False
 
-        return True  # safe
+        return True
 
     def calc_new_cost(self, from_node, to_node):
         d, _ = self.calc_distance_and_angle(from_node, to_node)

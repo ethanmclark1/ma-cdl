@@ -14,19 +14,17 @@ from languages.bandit import Bandit
 from languages.evolutionary_algo import EA
 
 class MA_CDL2():
-    def __init__(self):
-        self.env = Signal8.env(dynamic_obstacles=True)
+    def __init__(self, num_agents=1):
+        self.env = Signal8.env(num_agents)
         
-        agent_radius = self.env.metadata['agent_radius']
-        num_obstacles = self.env.metadata['num_obstacles']
-        obstacle_radius = self.env.metadata['obstacle_radius']
-        dynamic_obstacles = self.env.metadata['dynamic_obstacles']
-        
-        self.ea = EA(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles)
-        self.td3 = TD3(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles)
-        self.bandit = Bandit(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles) 
+        agent_radius = self.env.unwrapped.world.agents[0].size
+        obstacle_radius = self.env.unwrapped.world.obstacles[1].size
+                
+        self.ea = EA(agent_radius, obstacle_radius)
+        self.td3 = TD3(agent_radius, obstacle_radius)
+        self.bandit = Bandit(agent_radius, obstacle_radius) 
         self.speaker = Speaker()
-        self.listener = Listener()
+        self.listener = [Listener() for _ in range(num_agents)]
 
     def act(self):
         approaches = ['ea', 'td3', 'bandit']
@@ -37,38 +35,27 @@ class MA_CDL2():
         results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
         
         for _, scenario in product(range(10), problem_scenarios):
-            languages['td3'] = self.td3.get_language(scenario)
-            languages['bandit'] = self.bandit.get_language(scenario)
-            languages['ea'] = self.ea.get_language(scenario)
+            # languages['ea'] = self.ea.get_language(scenario)
+            # languages['td3'] = self.td3.get_language(scenario)
+            # languages['bandit'] = self.bandit.get_language(scenario)
             
             self.env.reset(options={'problem_name': scenario})
-            start, goal, obstacles = self.env.unwrapped.get_init_conditions()
+            entities = self.env.unwrapped.get_start_state()
             
-            directions['ea'] = self.speaker.direct(start, goal, obstacles, languages['ea'])    
-            directions['td3'] = self.speaker.direct(start, goal, obstacles, languages['td3'])    
-            directions['bandit'] = self.speaker.direct(start, goal, obstacles, languages['bandit'])
-                                    
-            world = self.env.unwrapped.world
-            backup = copy.deepcopy(world)
+            directions['ea'] = self.speaker.direct(entities, languages['ea'])    
+            directions['td3'] = self.speaker.direct(entities, languages['td3'])    
+            directions['bandit'] = self.speaker.direct(entities, languages['bandit'])
             
             for approach in directions:                
                 directions = directions[approach]
-                if directions is None:
-                    continue
                 
                 direction_len[approach][scenario].append(len(directions))
-                self.env.unwrapped.world = copy.deepcopy(backup)
-                obs, _, termination, truncation, _ = self.env.last()
+                observation, _, termination, truncation, _ = self.env.last()
 
                 while not (termination or truncation):
-                    action = self.listener.get_action(obs, goal, directions, self.env)
-                    
-                    # No action can adhere to the directions
-                    if action is None:
-                        break
-                        
+                    action = self.listener.get_action(observation, directions)
                     self.env.step(action)
-                    obs, _, termination, truncation, _ = self.env.last()
+                    observation, reward, termination, truncation, _ = self.env.last()
                                 
                     if termination:
                         results[approach][scenario] += 1
@@ -78,6 +65,7 @@ class MA_CDL2():
                         self.env.truncations['agent_0'] = False
                         break   
         
+        self.env.unwrapped.scenario.stop_scripted_obstacles()
         avg_direction_len = {approach: {scenario: np.mean(values) for scenario, values in scenario_dict.items()} 
                          for approach, scenario_dict in direction_len.items()}
         return results, avg_direction_len
@@ -136,6 +124,6 @@ class MA_CDL2():
         plt.show()
 
 if __name__ == '__main__':
-    ma_cdl2 = MA_CDL2()
+    ma_cdl2 = MA_CDL2(num_agents=2)
     results, avg_direction_len = ma_cdl2.act()
     ma_cdl2.plot(results, avg_direction_len)

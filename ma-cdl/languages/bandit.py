@@ -14,8 +14,8 @@ COST_THRESH = 20
 
 """Infinitely Armed Bandit"""
 class Bandit(CDL):
-    def __init__(self, agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles):
-        super().__init__(agent_radius, num_obstacles, obstacle_radius, dynamic_obstacles)
+    def __init__(self, agent_radius, obstacle_radius):
+        super().__init__(agent_radius, obstacle_radius)
         self.arms = []
         self.coeffs = []
         problem_scenarios = get_problem_list()
@@ -104,5 +104,5 @@ Infinitely Armed Bandit  w/ Context
 Context: Scenario and arm index
 """
 class ContextualBandit(Bandit):
-    def __init__(self, agent_radius, obs_radius, num_obstacles):
-        super().__init__(agent_radius, obs_radius, num_obstacles)
+    def __init__(self, agent_radius, obstacle_radius):
+        super().__init__(agent_radius, obstacle_radius)

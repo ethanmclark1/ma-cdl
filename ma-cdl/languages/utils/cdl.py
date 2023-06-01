@@ -24,11 +24,9 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 """"Base class for Context-Dependent Languages (EA, TD3, and Bandits)"""
 class CDL:
     def __init__(self, agent_radius, obstacle_radius):
-        self.max_lines = 7
+        self.max_lines = 8
         self.language = None
         self.configs_to_consider = 30
-        self.agent_radius = agent_radius
-        self.obstacle_radius = obstacle_radius
         self.weights = np.array([3, 2, 1.75, 3, 2])
         self.rrt_star = RRTStar(agent_radius, obstacle_radius)
     
@@ -118,7 +116,7 @@ class CDL:
     # Generate configuration under specified constraint
     def _generate_configuration(self, scenario):
         problem = get_problem(scenario)
-        
+        # TODO: Figure out how to represent dynamic obstacles
         dynamic_obs = np.empty((0, 2))
         start_constr = problem['start']
         goal_constr = problem['goal']
@@ -137,7 +135,7 @@ class CDL:
                 shuffled_y = y_points[random_indices]
                 obs = np.column_stack((shuffled_x, shuffled_y))
                 dynamic_obs = np.append(dynamic_obs, obs, axis=0)
-                
+            
             num_dynamic = self.num_obstacles // 2
             num_static = self.num_obstacles - num_dynamic
             static_obs = np.array([np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(num_static)])
@@ -166,6 +164,7 @@ class CDL:
         1. Unsafe area caused by all obstacles
         2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
     """
+    # TODO: Brainstorm what to do with dynamic obstacles in this case
     def _problem_cost(self, start, goal, static_obs, dynamic_obs, regions):       
         obstacles = np.concatenate((static_obs, dynamic_obs))
         obstacle_points = points(obstacles)

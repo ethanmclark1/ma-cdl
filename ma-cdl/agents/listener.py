@@ -2,6 +2,8 @@ import numpy as np
 
 from agents.utils.base_aqent import BaseAgent
 
+# TODO: Implemented RL for listener to accept reward
+
 class Listener(BaseAgent):
     def __init__(self):
         super().__init__()
@@ -10,8 +12,9 @@ class Listener(BaseAgent):
     # TODO: Implement Listener's constraints
     def _generate_constraints(self):
         a=3
-            
-    def get_action(self, observation, goal, directions):
+    
+    # TODO: Implement Listener's action selection
+    def get_action(self, observation, directions):
         observation = observation[0:2]
         
         obs_region = self.localize(observation)

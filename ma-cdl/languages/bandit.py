@@ -13,6 +13,7 @@ N_ROUNDS = 2500
 COST_THRESH = 20
 
 """Infinitely Armed Bandit"""
+# TODO: Entire thing
 class Bandit(CDL):
     def __init__(self, agent_radius, obstacle_radius):
         super().__init__(agent_radius, obstacle_radius)
@@ -97,12 +98,3 @@ class Bandit(CDL):
                     break
                 
             print(f'Episode: {episode}\nAverage Penalty: {avg_cost}\n')
-            
-            
-"""  
-Infinitely Armed Bandit  w/ Context 
-Context: Scenario and arm index
-"""
-class ContextualBandit(Bandit):
-    def __init__(self, agent_radius, obstacle_radius):
-        super().__init__(agent_radius, obstacle_radius)

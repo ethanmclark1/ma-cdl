@@ -123,6 +123,7 @@ class TD3(CDL):
         return reward, next_state, done, regions
     
     # Shuffle actions to remove order dependency
+    # TODO: Only shuffle a percentage of the possible permutations
     def _remember(self, state, action, reward, next_state, done):
         self.states.append(state)
         self.actions.append(action)

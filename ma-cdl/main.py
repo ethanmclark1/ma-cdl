@@ -1,10 +1,9 @@
-import copy
-
 import Signal8
 import numpy as np
 import matplotlib.pyplot as plt
 
 from itertools import product
+from arguments import get_arguments
 
 from agents.speaker import Speaker
 from agents.listener import Listener
@@ -14,9 +13,10 @@ from languages.bandit import Bandit
 from languages.evolutionary_algo import EA
 
 class MA_CDL2():
-    def __init__(self, num_agents=1):
-        self.env = Signal8.env(num_agents)
+    def __init__(self):
+        self.env = Signal8.env(render_mode=None)
         
+        num_agents = len(self.env.unwrapped.world.agents)
         agent_radius = self.env.unwrapped.world.agents[0].size
         obstacle_radius = self.env.unwrapped.world.obstacles[1].size
                 
@@ -29,33 +29,34 @@ class MA_CDL2():
     def act(self):
         approaches = ['ea', 'td3', 'bandit']
         problem_scenarios = Signal8.get_problem_list()
-        languages = {approach: None for approach in approaches}
-        directions = {approach: None for approach in approaches}
+        language_set = {approach: None for approach in approaches}
+        direction_set = {approach: None for approach in approaches}
         direction_len = {approach: {scenario: [] for scenario in problem_scenarios} for approach in approaches}
         results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
         
         for _, scenario in product(range(10), problem_scenarios):
-            # languages['ea'] = self.ea.get_language(scenario)
-            # languages['td3'] = self.td3.get_language(scenario)
-            # languages['bandit'] = self.bandit.get_language(scenario)
+            language_set['ea'] = self.ea.get_language(scenario)
+            language_set['td3'] = self.td3.get_language(scenario)
+            language_set['bandit'] = self.bandit.get_language(scenario)
             
             self.env.reset(options={'problem_name': scenario})
-            entities = self.env.unwrapped.get_start_state()
+            entity_positions = self.env.unwrapped.get_start_state()
             
-            directions['ea'] = self.speaker.direct(entities, languages['ea'])    
-            directions['td3'] = self.speaker.direct(entities, languages['td3'])    
-            directions['bandit'] = self.speaker.direct(entities, languages['bandit'])
+            direction_set['ea'] = self.speaker.direct(entity_positions, language_set['ea'])    
+            direction_set['td3'] = self.speaker.direct(entity_positions, language_set['td3'])    
+            direction_set['bandit'] = self.speaker.direct(entity_positions, language_set['bandit'])
             
-            for approach in directions:                
-                directions = directions[approach]
-                
+            # TODO: Implement functionality for multiple listening agents
+            for approach in direction_set:                
+                directions = direction_set[approach]
                 direction_len[approach][scenario].append(len(directions))
                 observation, _, termination, truncation, _ = self.env.last()
 
                 while not (termination or truncation):
                     action = self.listener.get_action(observation, directions)
                     self.env.step(action)
-                    observation, reward, termination, truncation, _ = self.env.last()
+                    observation, _, termination, truncation, _ = self.env.last()
+                    reward = self.speaker.give_reward(observation, directions, termination, truncation)
                                 
                     if termination:
                         results[approach][scenario] += 1
@@ -64,8 +65,10 @@ class MA_CDL2():
                     elif truncation:
                         self.env.truncations['agent_0'] = False
                         break   
+                    
+                    # TODO: Figure out how to reward speaker and listener
         
-        self.env.unwrapped.scenario.stop_scripted_obstacles()
+        self.env.close()
         avg_direction_len = {approach: {scenario: np.mean(values) for scenario, values in scenario_dict.items()} 
                          for approach, scenario_dict in direction_len.items()}
         return results, avg_direction_len
@@ -123,7 +126,8 @@ class MA_CDL2():
         # Show the plots in separate windows
         plt.show()
 
+# TODO: Add argparse functionality
 if __name__ == '__main__':
-    ma_cdl2 = MA_CDL2(num_agents=2)
+    ma_cdl2 = MA_CDL2()
     results, avg_direction_len = ma_cdl2.act()
     ma_cdl2.plot(results, avg_direction_len)

@@ -23,6 +23,6 @@ class Speaker(BaseAgent):
             directions += [a_star(start_idx, goal_idx, obstacles, language)]
         return directions
     
-    # TODO: Give reward to listener based on directions
+    # TODO: Give reward to listener based on adherence to directions and observation (nearness to obstacles)
     def give_reward(self, observation, directions, termination, truncation):
         return 0.0

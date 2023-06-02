@@ -95,7 +95,8 @@ class TD3(CDL):
         wandb.log({"image": wandb.Image(pil_image)})
     
     # Overlay lines in the environment
-    def _step(self, scenario, action, num_action):
+    # TODO: Retrive entities from world
+    def _step(self, world, scenario, action, num_action):
         reward = 0
         done = False
         next_state = []
@@ -223,7 +224,7 @@ class TD3(CDL):
                     target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
     
     # Train model on a given scenario
-    def _train(self, scenario):        
+    def _train(self, scenario, world):        
         valid_lines = CDL.get_valid_lines([])   
         default_square = CDL.create_regions(valid_lines)
         start_state = self.autoencoder.get_state(default_square)
@@ -236,7 +237,7 @@ class TD3(CDL):
             state = start_state
             while not done: 
                 action = self._select_action(state)
-                reward, next_state, done, regions = self._step(scenario, action, num_action)  
+                reward, next_state, done, regions = self._step(world, scenario, action, num_action)  
                 self._remember(state, action, reward, next_state, done)         
                 self._learn()
                 state = next_state
@@ -251,16 +252,17 @@ class TD3(CDL):
             if episode % 100 == 0 and len(regions) > 0:
                 self._log_regions(scenario, episode, regions, reward)
     
-    def _generate_optimal_coeffs(self, scenario):
-        self._train(scenario)
+    def _generate_optimal_coeffs(self, scenario, world):
+        self._train(scenario, world)
         
+        # TODO: Update considering world
         done = False
         optim_coeffs = []
         with torch.no_grad():
             while not done: 
                 action = self._select_action(state, noise=0)
                 optim_coeffs.append(action)
-                reward, next_state, done, _ = self._step(scenario, action)
+                reward, next_state, done, _ = self._step(world, scenario, action)
                 state = next_state
         
         print(f'Final reward: {reward}')

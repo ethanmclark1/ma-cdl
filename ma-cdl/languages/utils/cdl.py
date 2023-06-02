@@ -1,4 +1,5 @@
 import os
+import random
 import pickle
 import warnings
 import numpy as np
@@ -21,7 +22,6 @@ BOUNDARIES = [LineString([CORNERS[0], CORNERS[2]]),
               LineString([CORNERS[1], CORNERS[0]])]
 SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
-""""Base class for Context-Dependent Languages (EA, TD3, and Bandits)"""
 class CDL:
     def __init__(self, agent_radius, obstacle_radius):
         self.max_lines = 8
@@ -114,33 +114,22 @@ class CDL:
         return regions 
                 
     # Generate configuration under specified constraint
-    def _generate_configuration(self, scenario):
+    # TODO: Retrieve values from world
+    def _generate_configuration(self, scenario, world):
         problem = get_problem(scenario)
-        # TODO: Figure out how to represent dynamic obstacles
-        dynamic_obs = np.empty((0, 2))
-        start_constr = problem['start']
-        goal_constr = problem['goal']
+        start_constr = random.choice(problem['start'])
+        goal_constr = random.choice(problem['goal'])
+        static_obs_constr = problem['static_obs']
+        dynamic_obs_constr = problem['dynamic_obs']
+        
+        if scenario.startswith('precision_farming'):
+            problem['goal'].remove(goal_constr)
+            static_obs_constr += problem['goal']
+        
         start = np.random.uniform(*zip(*start_constr))
         goal = np.random.uniform(*zip(*goal_constr))
-        
-        static_obstacle_constr = problem['static_obs']
-        if self.dynamic_obstacles:
-            dynamic_obstacle_constr = problem['dynamic_obs']
-            # Generate random points under constraints to simulate movement of dynamic_obs
-            for constr in dynamic_obstacle_constr:
-                x_points = np.linspace(constr[0][0], constr[0][1], num=25)
-                y_points = np.linspace(constr[1][0], constr[1][1], num=25)
-                random_indices = np.random.permutation(len(x_points))
-                shuffled_x = x_points[random_indices]
-                shuffled_y = y_points[random_indices]
-                obs = np.column_stack((shuffled_x, shuffled_y))
-                dynamic_obs = np.append(dynamic_obs, obs, axis=0)
-            
-            num_dynamic = self.num_obstacles // 2
-            num_static = self.num_obstacles - num_dynamic
-            static_obs = np.array([np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(num_static)])
-        else:
-            static_obs = np.array([np.random.uniform(*zip(*static_obstacle_constr)) for _ in range(self.num_obstacles)])
+        static_obs = np.array([np.random.uniform(*zip(*constr)) for constr in static_obs_constr])
+        a=3
         
         return start, goal, static_obs, dynamic_obs
     
@@ -201,11 +190,11 @@ class CDL:
         4. Mean of nonnavigable area
         5. Variance of nonnavigable area
     """
-    def _optimizer(self, regions, scenario):            
+    def _optimizer(self, regions, scenario, world):            
         i = 0
         nonnavigable, unsafe = [], []
         while i < self.configs_to_consider:
-            start, goal, static_obs, dynamic_obs = self._generate_configuration(scenario)
+            start, goal, static_obs, dynamic_obs = self._generate_configuration(scenario, world)
             problem_cost = self._problem_cost(start, goal, static_obs, dynamic_obs, regions)
             if problem_cost:
                 nonnavigable.append(problem_cost[0])
@@ -227,18 +216,18 @@ class CDL:
             
         return scenario_cost
         
-    def _generate_optimal_coeffs(self, scenario):
+    def _generate_optimal_coeffs(self, scenario, world):
         raise NotImplementedError
         
     # Returns regions that defines the language
-    def get_language(self, scenario):
+    def get_language(self, scenario, world):
         class_name = self.__class__.__name__
         try:
             self._load(class_name, scenario)
         except FileNotFoundError:
             print(f'No stored {class_name} language for {scenario} problem.')
             print('Generating new language...')
-            coeffs = self._generate_optimal_coeffs(scenario)
+            coeffs = self._generate_optimal_coeffs(scenario, world)
             lines = CDL.get_lines_from_coeffs(coeffs)
             valid_lines = CDL.get_valid_lines(lines)
             self.language = CDL.create_regions(valid_lines)

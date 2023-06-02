@@ -12,8 +12,8 @@ from languages.td3 import TD3
 from languages.bandit import Bandit
 from languages.evolutionary_algo import EA
 
-class MA_CDL2():
-    def __init__(self):
+class MA_CDL():
+    def __init__(self, problem_type, num_agents, render_mode):
         self.env = Signal8.env(render_mode=None)
         
         num_agents = len(self.env.unwrapped.world.agents)
@@ -25,14 +25,24 @@ class MA_CDL2():
         self.bandit = Bandit(agent_radius, obstacle_radius) 
         self.speaker = Speaker()
         self.listener = [Listener() for _ in range(num_agents)]
-
-    def act(self):
+        
+    def get_languages(self, problem_scenarios):
         approaches = ['ea', 'td3', 'bandit']
-        problem_scenarios = Signal8.get_problem_list()
-        language_set = {approach: None for approach in approaches}
+        language_set = {approach: {scenario: None for scenario in problem_scenarios} for approach in approaches}   
+        
+        world = self.env.unwrapped.world
+        for approach, scenario in zip(approaches, problem_scenarios):
+            language_set[approach][scenario] = self.ea.get_language(scenario, world)
+            language_set[approach][scenario] = self.td3.get_language(scenario, world)
+            language_set[approach][scenario] = self.bandit.get_language(scenario, world)     
+        
+        return language_set
+
+    def act(self, problem_scenarios, language_set):
+        approaches = list(language_set.keys())
         direction_set = {approach: None for approach in approaches}
-        direction_len = {approach: {scenario: [] for scenario in problem_scenarios} for approach in approaches}
-        results = {approach: {scenario: 0 for scenario in problem_scenarios} for approach in approaches}
+        direction_len = {approach: {scenario: [] for scenario in self.problem_scenarios} for approach in approaches}
+        results = {approach: {scenario: 0 for scenario in self.problem_scenarios} for approach in approaches}
         
         for _, scenario in product(range(10), problem_scenarios):
             language_set['ea'] = self.ea.get_language(scenario)
@@ -126,8 +136,14 @@ class MA_CDL2():
         # Show the plots in separate windows
         plt.show()
 
-# TODO: Add argparse functionality
 if __name__ == '__main__':
-    ma_cdl2 = MA_CDL2()
-    results, avg_direction_len = ma_cdl2.act()
-    ma_cdl2.plot(results, avg_direction_len)
+    args = get_arguments()
+    ma_cdl = MA_CDL(args)
+    
+    problems = Signal8.get_problem_list()
+    disaster = [problem for problem in problems if problem.startswith('disaster_response')]
+    farming = [problem for problem in problems if problem.startswith('precision_farming')]
+    
+    language_set = ma_cdl.get_languages(disaster)
+    results, avg_direction_len = ma_cdl.act(language_set)
+    ma_cdl.plot(results, avg_direction_len)

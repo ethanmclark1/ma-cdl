@@ -10,4 +10,4 @@ def get_arguments():
                         help='mode of visualization {default_val: None, choices: [%(choices)s]}')
     args = parser.parse_args()
         
-    return args
+    return args.problem_type, args.num_agents, args.render_mode

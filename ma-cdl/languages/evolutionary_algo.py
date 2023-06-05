@@ -7,24 +7,24 @@ from languages.utils.cdl import CDL
 
 """Evolutionary Algorithm"""
 class EA(CDL):
-    def __init__(self, agent_radius, obstacle_radius):
-        super().__init__(agent_radius, obstacle_radius)
+    def __init__(self, agent_radius):
+        super().__init__(agent_radius)
                 
-    def _optimizer(self, coeffs, scenario, world):
+    def _optimizer(self, coeffs, instance):
         lines = CDL.get_lines_from_coeffs(coeffs)
         valid_lines = CDL.get_valid_lines(lines)
         regions = CDL.create_regions(valid_lines)
-        scenario_cost = super()._optimizer(regions, scenario, world)
+        scenario_cost = super()._optimizer(regions, instance)
         return scenario_cost
         
     # Minimizes cost function to generate the optimal lines
-    def _generate_optimal_coeffs(self, scenario, world):
+    def _generate_optimal_coeffs(self, instance):
         lb, ub = -1, 1
         optim_val, optim_coeffs = inf, None
         start = time.time()
         for num in range(4, self.max_lines):
             bounds = [(lb, ub) for _ in range(3*num)]
-            res = optimize.differential_evolution(self._optimizer, bounds, args=(scenario, world),
+            res = optimize.differential_evolution(self._optimizer, bounds, args=(instance,),
                                                   maxiter=100*num, init='sobol')
             print(f'Cost: {res.fun}')
             if optim_val > res.fun:

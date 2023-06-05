@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# TODO: Add simple RL networks for speaker and listener
-
 class Autoencoder(nn.Module):
     def __init__(self, output_dims):
         super(Autoencoder, self).__init__()

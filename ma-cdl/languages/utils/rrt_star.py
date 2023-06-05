@@ -33,9 +33,8 @@ class RRTStar():
             self.ymin = float(area[2])
             self.ymax = float(area[3])
 
-    def __init__(self, agent_radius, obstacle_radius):
+    def __init__(self, agent_radius):
         self.robot_radius = agent_radius
-        self.obstacle_radius = obstacle_radius
         self.play_area = self.AreaBounds((-1, 1, -1, 1))
         self.min_rand, self.max_rand = -1, 1
         self.expand_dis = 0.1
@@ -46,11 +45,10 @@ class RRTStar():
         self.search_until_max_iter = False
         self.node_list = []
 
-    def plan(self, start, goal, obstacles, animation=False):
-        new_dim = np.full(len(obstacles), self.obstacle_radius)
+    def plan(self, start, goal, static_obs, dynamic_obs, animation=False):
         self.start = self.Node(start[0], start[1])
         self.goal_node = self.end = self.Node(goal[0], goal[1])
-        self.obstacle_list = np.column_stack((obstacles, new_dim))
+        self.obstacle_list = obstacles
         self.node_list = [self.start]
         
         for i in range(self.max_iter):

@@ -26,8 +26,8 @@ from languages.utils.replay_buffer import ReplayBuffer
 
 """Twin Delayed Deep Deterministic Policy Gradient (TD3)"""
 class TD3(CDL):
-    def __init__(self, agent_radius, obstacle_radius):
-        super().__init__(agent_radius, obstacle_radius)
+    def __init__(self, agent_radius):
+        super().__init__(agent_radius)
         self.states = []
         self.actions = []
         self.rewards = []
@@ -93,6 +93,8 @@ class TD3(CDL):
         pil_image = Image.open(buffer)
 
         wandb.log({"image": wandb.Image(pil_image)})
+        
+    # TODO: Implement save and load
     
     # Overlay lines in the environment
     # TODO: Retrive entities from world

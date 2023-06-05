@@ -1,13 +1,14 @@
-import numpy as np
+import os
+import torch
 
 from agents.utils.base_aqent import BaseAgent
-
-# TODO: Implemented RL for listener to accept reward
+from agents.utils.networks import ListenerNetwork
 
 class Listener(BaseAgent):
-    def __init__(self):
+    def __init__(self, problem_instance, obs_dim):
         super().__init__()
-        self.actions = np.arange(1,5)
+        self.listener_network = ListenerNetwork(obs_dim)
+    
         
     # TODO: Implement Listener's constraints
     def _generate_constraints(self):
@@ -15,10 +16,10 @@ class Listener(BaseAgent):
     
     # TODO: Implement Listener's action selection
     def get_action(self, observation, directions):
-        observation = observation[0:2]
-        
-        obs_region = self.localize(observation)
-        goal_region = self.localize(goal)
+        agent_pos = observation[:2]
+        goal_pos = observation[-2:]
+        obs_region = self.localize(agent_pos)
+        goal_region = self.localize(goal_pos)
         if obs_region == goal_region:
             next_region = goal_region
             target = goal

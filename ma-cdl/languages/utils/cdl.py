@@ -1,5 +1,4 @@
 import os
-import random
 import pickle
 import warnings
 import numpy as np
@@ -8,7 +7,6 @@ import matplotlib.pyplot as plt
 from rtree import index
 from shapely import points
 from itertools import product
-from Signal8 import get_problem
 from statistics import mean, variance
 from languages.utils.rrt_star import RRTStar
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
@@ -24,15 +22,18 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 class CDL:
     def __init__(self, agent_radius, obstacle_radius):
+        self.world = None
         self.max_lines = 8
+        self.scenario = None
         self.language = None
         self.configs_to_consider = 30
+        self.np_random = np.random.default_rng()
         self.weights = np.array([3, 2, 1.75, 3, 2])
         self.rrt_star = RRTStar(agent_radius, obstacle_radius)
     
-    def _save(self, class_name, scenario):
-        directory = f'ma-cdl/languages/history/{class_name}'
-        filename = f'{scenario}.pkl'
+    def _save(self, approach, problem_instance):
+        directory = f'ma-cdl/languages/history/{approach}'
+        filename = f'{problem_instance}.pkl'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -40,23 +41,23 @@ class CDL:
         with open(file_path, 'wb') as file:
             pickle.dump(self.language, file)
     
-    def _load(self, class_name, scenario):
-        directory = f'ma-cdl/languages/history/{class_name}'
-        filename = f'{scenario}.pkl'
+    def _load(self, approach, problem_instance):
+        directory = f'ma-cdl/languages/history/{approach}'
+        filename = f'{problem_instance}.pkl'
         file_path = os.path.join(directory, filename)
         with open(file_path, 'rb') as f:
             language = pickle.load(f)
         self.language = language
     
         # Visualize regions that define the language
-    def _visualize(self, class_name, scenario):
+    def _visualize(self, approach, problem_instance):
         for idx, region in enumerate(self.language):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y,
                      idx, ha='center', va='center')
 
         directory = 'ma-cdl/language/history'
-        filename = f'{class_name}-{scenario}.png'
+        filename = f'{approach}-{problem_instance}.png'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -114,23 +115,17 @@ class CDL:
         return regions 
                 
     # Generate configuration under specified constraint
-    # TODO: Retrieve values from world
-    def _generate_configuration(self, scenario, world):
-        problem = get_problem(scenario)
-        start_constr = random.choice(problem['start'])
-        goal_constr = random.choice(problem['goal'])
-        static_obs_constr = problem['static_obs']
-        dynamic_obs_constr = problem['dynamic_obs']
+    def _generate_configuration(self, problem_instance):
+        instance_num = problem_instance[-1]
+        self.scenario.reset_world(self.world, self.np_random, instance_num)
         
-        if scenario.startswith('precision_farming'):
-            problem['goal'].remove(goal_constr)
-            static_obs_constr += problem['goal']
-        
-        start = np.random.uniform(*zip(*start_constr))
-        goal = np.random.uniform(*zip(*goal_constr))
-        static_obs = np.array([np.random.uniform(*zip(*constr)) for constr in static_obs_constr])
-        a=3
-        
+        rand_idx = self.np_random.choice(len(self.world.agents))
+        start = self.world.agents[rand_idx].state.p_pos
+        goal = self.world.agents[rand_idx].goal_a.state.p_pos
+        static_obs = [obs.state.p_pos for obs in self.world.obstacles if obs.movable == False]
+        # get dynamic obstacle object instead of position because radius is needed too
+        dynamic_obs = [obs for obs in self.world.obstacles if obs.movable == True]
+
         return start, goal, static_obs, dynamic_obs
     
     # Create RTree index to more efficiently search points
@@ -190,11 +185,11 @@ class CDL:
         4. Mean of nonnavigable area
         5. Variance of nonnavigable area
     """
-    def _optimizer(self, regions, scenario, world):            
+    def _optimizer(self, regions, problem_instance):            
         i = 0
         nonnavigable, unsafe = [], []
         while i < self.configs_to_consider:
-            start, goal, static_obs, dynamic_obs = self._generate_configuration(scenario, world)
+            start, goal, static_obs, dynamic_obs = self._generate_configuration(problem_instance)
             problem_cost = self._problem_cost(start, goal, static_obs, dynamic_obs, regions)
             if problem_cost:
                 nonnavigable.append(problem_cost[0])
@@ -209,28 +204,30 @@ class CDL:
 
         # No regions were created
         if nonnavigable_mu > 3.95:
-            scenario_cost = 10e3
+            instance_cost = 10e3
         else:
             criterion = np.array([unsafe_mu, unsafe_var, efficiency, nonnavigable_mu, nonnavigable_var])
-            scenario_cost = np.sum(self.weights * criterion)
+            instance_cost = np.sum(self.weights * criterion)
             
-        return scenario_cost
+        return instance_cost
         
-    def _generate_optimal_coeffs(self, scenario, world):
+    def _generate_optimal_coeffs(self, problem_instance):
         raise NotImplementedError
         
     # Returns regions that defines the language
-    def get_language(self, scenario, world):
-        class_name = self.__class__.__name__
+    def get_language(self, problem_instance, scenario, world):
+        approach = self.__class__.__name__
         try:
-            self._load(class_name, scenario)
+            self._load(approach, problem_instance)
         except FileNotFoundError:
-            print(f'No stored {class_name} language for {scenario} problem.')
+            print(f'No stored {approach} language for {problem_instance} problem instance.')
             print('Generating new language...')
-            coeffs = self._generate_optimal_coeffs(scenario, world)
+            self.world = world
+            self.scenario = scenario
+            coeffs = self._generate_optimal_coeffs(problem_instance)
             lines = CDL.get_lines_from_coeffs(coeffs)
             valid_lines = CDL.get_valid_lines(lines)
             self.language = CDL.create_regions(valid_lines)
-            self._save(class_name, scenario)
+            self._save(approach, problem_instance)
         
-        self._visualize(class_name, scenario)
+        self._visualize(approach, problem_instance)

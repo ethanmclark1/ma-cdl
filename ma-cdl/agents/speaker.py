@@ -1,12 +1,16 @@
 from shapely import Point
 from agents.utils.a_star import a_star
-from agents.utils.base_aqent import BaseAgent
 
-# TODO: Implemented RL for speaker to accept reward based on listeners adherence
-
-class Speaker(BaseAgent):
+class Speaker:
     def __init__(self):
-        super().__init__()
+        self.language = None
+        
+    def localize(self, pos, language):
+        try:
+            region_idx = list(map(lambda region: region.contains(pos), language)).index(True)
+        except:
+            region_idx = None
+        return region_idx    
     
     # TODO: Figure out way to account for dynamic obstacles
     def direct(self, entity_positions, language):
@@ -23,6 +27,6 @@ class Speaker(BaseAgent):
             directions += [a_star(start_idx, goal_idx, obstacles, language)]
         return directions
     
-    # TODO: Give reward to listener based on adherence to directions and observation (nearness to obstacles)
-    def give_reward(self, observation, directions, termination, truncation):
-        return 0.0
+    # Give reward to listener based on adherence to directions
+    def reward_to_listener(self, observation, directions, termination, truncation):
+        a=3

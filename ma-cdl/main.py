@@ -17,7 +17,7 @@ class MA_CDL():
         self.env = Signal8.env(problem_type, num_agents, render_mode)
         
         agent_radius = self.env.unwrapped.world.agents[0].size
-        obstacle_radius = self.env.unwrapped.world.landmarks[0].size
+        obstacle_radius = self.env.unwrapped.world.obstacles[0].size
         obs_dim = self.env.observation_space(self.env.possible_agents[0]).shape[0]
                 
         self.ea = EA(agent_radius, obstacle_radius)
@@ -26,7 +26,7 @@ class MA_CDL():
         self.speaker = Speaker()
         self.listener = [Listener(obs_dim) for _ in range(num_agents)]
         
-    def get_languages(self, problem_type):
+    def retrieve_languages(self, problem_type):
         approaches = ['ea', 'td3', 'bandit']
         problem_instances = [problem_type + f'_{i}' for i in range(4)]
         language_set = {approach: {instance: None for instance in problem_instances} for approach in approaches}   
@@ -70,7 +70,8 @@ class MA_CDL():
                     action = self.listener.get_action(observation, directions)
                     self.env.step(action)
                     observation, _, termination, truncation, _ = self.env.last()
-                    reward = self.speaker.give_reward(observation, directions, termination, truncation)
+                    listener_reward = self.speaker.reward_to_listener(observation, directions, termination, truncation)
+                    speaker_reward = self.listener.reward_to_speaker(observation)
                                 
                     if termination:
                         results[approach][instance] += 1
@@ -144,6 +145,7 @@ if __name__ == '__main__':
     problem_type, num_agents, render_mode = get_arguments()
     ma_cdl = MA_CDL(problem_type, num_agents, render_mode)
     
-    language_set = ma_cdl.get_languages(problem_type)
+    language_set = ma_cdl.retrieve_languages(problem_type)
+    ma_cdl.teach_language(language_set)
     results, avg_direction_len = ma_cdl.act(problem_type, language_set)
     ma_cdl.plot(results, avg_direction_len)

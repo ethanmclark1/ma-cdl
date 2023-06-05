@@ -79,13 +79,13 @@ class TD3(CDL):
         config.policy_update_freq = self.policy_update_freq
     
     # Upload regions to Weights and Biases
-    def _log_regions(self, scenario, episode, regions, reward):
+    def _log_regions(self, problem_instance, episode, regions, reward):
         _, ax = plt.subplots()
-        scenario = scenario.capitalize()
+        problem_instance = problem_instance.capitalize()
         for idx, region in enumerate(regions):
             ax.fill(*region.exterior.xy)
             ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        ax.set_title(f'Scenario: {scenario}   Episode: {episode}   Reward: {reward:.2f}')
+        ax.set_title(f'problem_instance: {problem_instance}   Episode: {episode}   Reward: {reward:.2f}')
 
         buffer = io.BytesIO()
         plt.savefig(buffer, format='png')
@@ -93,12 +93,9 @@ class TD3(CDL):
         pil_image = Image.open(buffer)
 
         wandb.log({"image": wandb.Image(pil_image)})
-        
-    # TODO: Implement save and load
-    
+            
     # Overlay lines in the environment
-    # TODO: Retrive entities from world
-    def _step(self, world, scenario, action, num_action):
+    def _step(self, problem_instance, action, num_action):
         reward = 0
         done = False
         next_state = []
@@ -108,7 +105,7 @@ class TD3(CDL):
         valid_lines = CDL.get_valid_lines(line)
         self.valid_lines.update(valid_lines)
         regions = CDL.create_regions(list(self.valid_lines))
-        _reward = -super()._optimizer(regions, scenario)
+        _reward = -super()._optimizer(regions, problem_instance)
         
         if len(self.valid_lines) == prev_num_lines or _reward > self.reward_thres:
             done = True
@@ -156,12 +153,12 @@ class TD3(CDL):
                 [], [], [], [], []
     
     # Populate replay buffer with dummy transitions
-    def _populate_buffer(self, scenario, start_state):
+    def _populate_buffer(self, problem_instance, start_state):
         num_action = 1
         state = start_state
         while len(self.replay_buffer) < self.num_dummy:
             action = self.rng.uniform(-self.action_range, self.action_range, size=self.action_dims)
-            reward, next_state, done, _ = self._step(scenario, action, num_action)
+            reward, next_state, done, _ = self._step(problem_instance, action, num_action)
             self._remember(state, action, reward, next_state, done)
             
             if done: 
@@ -225,12 +222,13 @@ class TD3(CDL):
                 for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
                     target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
     
-    # Train model on a given scenario
-    def _train(self, scenario, world):        
+    # Train model on a given problem_instance
+    def _train(self, problem_instance):        
         valid_lines = CDL.get_valid_lines([])   
         default_square = CDL.create_regions(valid_lines)
+        # TODO: Retrain autoencoder due to more possible lines
         start_state = self.autoencoder.get_state(default_square)
-        self._populate_buffer(scenario, start_state)
+        self._populate_buffer(problem_instance, start_state)
         
         rewards = []     
         for episode in range(1000):
@@ -239,7 +237,7 @@ class TD3(CDL):
             state = start_state
             while not done: 
                 action = self._select_action(state)
-                reward, next_state, done, regions = self._step(world, scenario, action, num_action)  
+                reward, next_state, done, regions = self._step(problem_instance, action, num_action)  
                 self._remember(state, action, reward, next_state, done)         
                 self._learn()
                 state = next_state
@@ -252,19 +250,18 @@ class TD3(CDL):
             
             wandb.log({"reward": reward, "avg_reward": avg_reward})
             if episode % 100 == 0 and len(regions) > 0:
-                self._log_regions(scenario, episode, regions, reward)
+                self._log_regions(problem_instance, episode, regions, reward)
     
-    def _generate_optimal_coeffs(self, scenario, world):
-        self._train(scenario, world)
+    def _generate_optimal_coeffs(self, problem_instance):
+        self._train(problem_instance)
         
-        # TODO: Update considering world
         done = False
         optim_coeffs = []
         with torch.no_grad():
             while not done: 
                 action = self._select_action(state, noise=0)
                 optim_coeffs.append(action)
-                reward, next_state, done, _ = self._step(world, scenario, action)
+                reward, next_state, done, _ = self._step(problem_instance, action)
                 state = next_state
         
         print(f'Final reward: {reward}')

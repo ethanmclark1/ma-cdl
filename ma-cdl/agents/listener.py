@@ -1,15 +1,14 @@
 import os
 import torch
+import numpy as np
 
-from agents.utils.base_aqent import BaseAgent
 from agents.utils.networks import ListenerNetwork
 
-class Listener(BaseAgent):
+class Listener:
     def __init__(self, problem_instance, obs_dim):
-        super().__init__()
+        self.language = None
         self.listener_network = ListenerNetwork(obs_dim)
     
-        
     # TODO: Implement Listener's constraints
     def _generate_constraints(self):
         a=3
@@ -30,3 +29,12 @@ class Listener(BaseAgent):
         
         action = super().get_action(observation, target)
         return action
+    
+    # Reward speaker based on distance from obstacles and nearness to goal
+    def reward_to_speaker(self, observation):
+        speaker_reward = 0.0
+        for relative_pos in observation[2:-2]:
+            speaker_reward += np.linalg.norm(relative_pos)
+        speaker_reward += 1.1*np.linalg.norm(observation[-2:])
+        
+        return speaker_reward

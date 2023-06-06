@@ -8,7 +8,7 @@ from rtree import index
 from shapely import points
 from itertools import product
 from statistics import mean, variance
-from languages.utils.rrt_star import RRTStar
+from languages.utils.potential_field import PathPlanner
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -21,15 +21,15 @@ BOUNDARIES = [LineString([CORNERS[0], CORNERS[2]]),
 SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 class CDL:
-    def __init__(self, agent_radius, obstacle_radius):
-        self.world = None
+    def __init__(self, scenario, world):
         self.max_lines = 8
-        self.scenario = None
+        self.world = world
         self.language = None
+        self.scenario = scenario
         self.configs_to_consider = 30
         self.np_random = np.random.default_rng()
         self.weights = np.array([3, 2, 1.75, 3, 2])
-        self.rrt_star = RRTStar(agent_radius, obstacle_radius)
+        self.planner = PathPlanner(scenario, world)
     
     def _save(self, approach, problem_instance):
         directory = f'ma-cdl/languages/history/{approach}'
@@ -150,13 +150,13 @@ class CDL:
     """
     # TODO: Brainstorm what to do with dynamic obstacles in this case
     def _problem_cost(self, start, goal, static_obs, dynamic_obs, regions):       
-        obstacles = np.concatenate((static_obs, dynamic_obs))
-        obstacle_points = points(obstacles)
+        # obstacles = np.concatenate((static_obs, dynamic_obs))
+        # obstacle_points = points(obstacles)
         
-        all_obs_idx, rtree = self._create_index(obstacle_points, regions)
-        nonnavigable = sum(regions[idx].area for idx in all_obs_idx)
+        # all_obs_idx, rtree = self._create_index(obstacle_points, regions)
+        # nonnavigable = sum(regions[idx].area for idx in all_obs_idx)
         
-        path = self.rrt_star.plan(start, goal, static_obs)
+        path = self.planner.get_plan(start, goal, static_obs, dynamic_obs)
         if path is None: return 4, 10
         
         static_obs_points = points(static_obs)
@@ -215,15 +215,13 @@ class CDL:
         raise NotImplementedError
         
     # Returns regions that defines the language
-    def get_language(self, problem_instance, scenario, world):
+    def get_language(self, problem_instance):
         approach = self.__class__.__name__
         try:
             self._load(approach, problem_instance)
         except FileNotFoundError:
             print(f'No stored {approach} language for {problem_instance} problem instance.')
             print('Generating new language...')
-            self.world = world
-            self.scenario = scenario
             coeffs = self._generate_optimal_coeffs(problem_instance)
             lines = CDL.get_lines_from_coeffs(coeffs)
             valid_lines = CDL.get_valid_lines(lines)

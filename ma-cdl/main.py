@@ -16,27 +16,27 @@ class MA_CDL():
     def __init__(self, problem_type, num_agents, render_mode):
         self.env = Signal8.env(problem_type, num_agents, render_mode)
         
-        agent_radius = self.env.unwrapped.world.agents[0].size
-        obstacle_radius = self.env.unwrapped.world.obstacles[0].size
+        scenario = self.env.unwrapped.scenario
+        world = self.env.unwrapped.world
         obs_dim = self.env.observation_space(self.env.possible_agents[0]).shape[0]
                 
-        self.ea = EA(agent_radius, obstacle_radius)
-        self.td3 = TD3(agent_radius, obstacle_radius)
-        self.bandit = Bandit(agent_radius, obstacle_radius) 
+        self.ea = EA(scenario, world)
+        # self.td3 = TD3(scenario, world)
+        self.bandit = Bandit(scenario, world) 
+        
         self.speaker = Speaker()
-        self.listener = [Listener(obs_dim) for _ in range(num_agents)]
+        self.listener = [Listener(problem_type, obs_dim) for _ in range(num_agents)]
         
     def retrieve_languages(self, problem_type):
         approaches = ['ea', 'td3', 'bandit']
         problem_instances = [problem_type + f'_{i}' for i in range(4)]
         language_set = {approach: {instance: None for instance in problem_instances} for approach in approaches}   
         
-        world = self.env.unwrapped.world
-        scenario = self.env.unwrapped.scenario
+
         for approach, instance in zip(approaches, problem_instances):
-            language_set[approach][instance] = self.ea.get_language(instance, scenario, world)
-            language_set[approach][instance] = self.td3.get_language(instance, scenario, world)
-            language_set[approach][instance] = self.bandit.get_language(instance, scenario, world)     
+            language_set[approach][instance] = self.ea.get_language(instance)
+            language_set[approach][instance] = self.td3.get_language(instance)
+            language_set[approach][instance] = self.bandit.get_language(instance)     
         
         return language_set
 

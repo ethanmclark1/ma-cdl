@@ -26,8 +26,8 @@ from languages.utils.replay_buffer import ReplayBuffer
 
 """Twin Delayed Deep Deterministic Policy Gradient (TD3)"""
 class TD3(CDL):
-    def __init__(self, agent_radius):
-        super().__init__(agent_radius)
+    def __init__(self, scenario, world):
+        super().__init__(scenario, world)
         self.states = []
         self.actions = []
         self.rewards = []

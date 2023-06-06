@@ -220,6 +220,7 @@ class ImageDataset(Dataset):
                 self.save_image(pixel_tensor, image_idx)
                 image_idx += 1
                 
+                # TODO: Increase number of liness
                 if len(valid_lines) == prev_num_lines or num_action == 6:
                     done = True
                     continue

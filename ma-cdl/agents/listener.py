@@ -5,7 +5,7 @@ import numpy as np
 from agents.utils.networks import ListenerNetwork
 
 class Listener:
-    def __init__(self, problem_instance, obs_dim):
+    def __init__(self, problem_type, obs_dim):
         self.language = None
         self.listener_network = ListenerNetwork(obs_dim)
     
@@ -13,7 +13,7 @@ class Listener:
     def _generate_constraints(self):
         a=3
     
-    # TODO: Implement Listener's action selection
+    # TODO: Implement Listener's action selection considering own constraints on top of directions
     def get_action(self, observation, directions):
         agent_pos = observation[:2]
         goal_pos = observation[-2:]

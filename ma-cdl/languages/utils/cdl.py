@@ -29,7 +29,12 @@ class CDL:
         self.configs_to_consider = 30
         self.np_random = np.random.default_rng()
         self.weights = np.array([3, 2, 1.75, 3, 2])
-        self.planner = PathPlanner(scenario, world)
+        
+        agent_radius = world.agents[0].size
+        goal_radius = world.goals[0].size
+        obstacle_radius = world.obstacles[1].size
+        
+        self.planner = PathPlanner(agent_radius, goal_radius, obstacle_radius)
     
     def _save(self, approach, problem_instance):
         directory = f'ma-cdl/languages/history/{approach}'
@@ -123,7 +128,7 @@ class CDL:
         start = self.world.agents[rand_idx].state.p_pos
         goal = self.world.agents[rand_idx].goal_a.state.p_pos
         static_obs = [obs.state.p_pos for obs in self.world.obstacles if obs.movable == False]
-        # get dynamic obstacle object instead of position because radius is needed too
+        # get object instead of position because multiple attributes are needed (size, lock, position)
         dynamic_obs = [obs for obs in self.world.obstacles if obs.movable == True]
 
         return start, goal, static_obs, dynamic_obs
@@ -156,7 +161,7 @@ class CDL:
         # all_obs_idx, rtree = self._create_index(obstacle_points, regions)
         # nonnavigable = sum(regions[idx].area for idx in all_obs_idx)
         
-        path = self.planner.get_plan(start, goal, static_obs, dynamic_obs)
+        path = self.planner.get_path(start, goal, static_obs, dynamic_obs)
         if path is None: return 4, 10
         
         static_obs_points = points(static_obs)

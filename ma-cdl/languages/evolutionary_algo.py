@@ -22,7 +22,7 @@ class EA(CDL):
         lb, ub = -1, 1
         optim_val, optim_coeffs = inf, None
         start = time.time()
-        for num in range(4, self.max_lines):
+        for num in range(self.min_lines, self.max_lines):
             bounds = [(lb, ub) for _ in range(3*num)]
             res = optimize.differential_evolution(self._optimizer, bounds, args=(instance,),
                                                   maxiter=100*num, init='sobol')

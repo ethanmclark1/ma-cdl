@@ -32,7 +32,6 @@ class MA_CDL():
         problem_instances = [problem_type + f'_{i}' for i in range(4)]
         language_set = {approach: {instance: None for instance in problem_instances} for approach in approaches}   
         
-
         for approach, instance in zip(approaches, problem_instances):
             language_set[approach][instance] = self.ea.get_language(instance)
             language_set[approach][instance] = self.td3.get_language(instance)
@@ -60,18 +59,19 @@ class MA_CDL():
             direction_set['td3'] = self.speaker.direct(entity_positions, td3)    
             direction_set['bandit'] = self.speaker.direct(entity_positions, bandit)
             
-            # TODO: Implement functionality for multiple listening agents
-            for approach in direction_set:                
+            # TODO: Test functionality for multiple agents
+            for approach in direction_set.keys():   
+                i = 0             
                 directions = direction_set[approach]
                 direction_len[approach][instance].append(len(directions))
                 observation, _, termination, truncation, _ = self.env.last()
 
                 while not (termination or truncation):
-                    action = self.listener.get_action(observation, directions)
+                    action = self.listener[i].get_action(observation, directions)
                     self.env.step(action)
                     observation, _, termination, truncation, _ = self.env.last()
                     listener_reward = self.speaker.reward_to_listener(observation, directions, termination, truncation)
-                    speaker_reward = self.listener.reward_to_speaker(observation)
+                    speaker_reward = self.listener[i].reward_to_speaker(observation)
                                 
                     if termination:
                         results[approach][instance] += 1
@@ -80,6 +80,9 @@ class MA_CDL():
                     elif truncation:
                         self.env.truncations['agent_0'] = False
                         break   
+                    
+                    i += 1
+                    i = i % len(directions)
                     
                     # TODO: Figure out how to reward speaker and listener
         

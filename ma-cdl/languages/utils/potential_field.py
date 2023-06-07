@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 class Agent:
     def __init__(self, radius):
@@ -36,68 +37,70 @@ class Goal:
     def get_pos(self):
         return self.x, self.y
 
+
 class Obstacle:
     def __init__(self, obs, size=None):
+        self.traj_x = []
+        self.traj_y = []
         # Static obstacle
         if size is not None:
-            self.x, self.y = obs
-            self.size = size
+            self._x, self._y = obs
+            self._size = size
+            self.traj_x.append(self._x)
+            self.traj_y.append(self._y)
         # Dynamic obstacle
         else:
             self._obs = obs
-                
+            self._x, self._y = self._obs.state.p_pos
+            self._size = self._obs.size
+
     @property
     def x(self):
         if hasattr(self, '_obs'):
             with self._obs.lock:
-                return self._obs.state.p_pos[0]
-        else:
-            return self._x
-        
+                self._x = self._obs.state.p_pos[0]
+        return self._x
+
     @property
     def y(self):
         if hasattr(self, '_obs'):
             with self._obs.lock:
-                return self._obs.state.p_pos[1]
-        else:
-            return self._y
-    
+                self._y = self._obs.state.p_pos[1]
+        return self._y
+
     @property
     def size(self):
         if hasattr(self, '_obs'):
             with self._obs.lock:
-                return self._obs.size
-        else:
-            return self._size
-        
+                self._size = self._obs.size
+        return self._size
+
     @x.setter
     def x(self, value):
-        if hasattr(self, '_obs'):
-            with self._obs.lock:
-                self._obs.state.p_pos[0] = value
-        else:
-            self._x = value
-    
+        self._x = value
+        self.traj_x.append(value)
+
     @y.setter
     def y(self, value):
-        if hasattr(self, '_obs'):
-            with self._obs.lock:
-                self._obs.state.p_pos[1] = value
-        else:
-            self._y = value
-    
+        self._y = value
+        self.traj_y.append(value)
+
     @size.setter
     def size(self, value):
+        self._size = value
+
+    def update(self):
         if hasattr(self, '_obs'):
             with self._obs.lock:
-                self._obs.size = value
-        else:
-            self._size = value
+                self.x = self._obs.state.p_pos[0]
+                self.y = self._obs.state.p_pos[1]
+                self.size = self._obs.size
+
 
 class PotentialField:
     def __init__(self):
-        self.gain_attr = 0.2
-        self.gain_rep = 0.2
+        self.gain_attr = 0.25
+        self.gain_rep = 0.25
 
     def calc_input(self, goal_x, goal_y, state, obstacles):
         term_attr = self._calc_attractive_term(goal_x, goal_y, state)
@@ -123,14 +126,15 @@ class PotentialField:
 
 class PathPlanner:
     def __init__(self, agent_radius, goal_radius, obs_radius):
-        self.dt = 0.1
+        self.dt = 0.15
                         
         self.agent = Agent(agent_radius)
         self.goal = Goal(goal_radius)
         self.obs_radius = obs_radius
         self.potential_field = PotentialField()
-        
-    def get_path(self, start, goal, static_obs, dynamic_obs):
+    
+    # TODO: Make sure dynamic obstacles are updated
+    def get_path(self, start, goal, static_obs, dynamic_obs, visualize=True):
         path = None
         self.agent.set_state(start)
         self.goal.set_state(goal)
@@ -139,10 +143,11 @@ class PathPlanner:
     
         goal_x, goal_y = self.goal.get_pos()
         goal_thresh = self.agent.radius + self.goal.radius
-        max_timestep = 500
+        max_timestep = 250
 
         time_step = 0
         while True:
+            [obs.update() for obs in self.obstacles]
             u_x, u_y = self.potential_field.calc_input(goal_x, goal_y, self.agent, self.obstacles)
 
             self.agent.update_state(u_x, u_y, self.dt)
@@ -157,4 +162,22 @@ class PathPlanner:
             if time_step >= max_timestep:
                 break
 
+        if visualize and path is not None:
+            self._visualize(path)
         return path
+    
+    def _visualize(self, path):
+        plt.plot(*path.T, color='cyan', linewidth=2)
+
+        plt.scatter(self.agent.traj_x[0], self.agent.traj_y[0], color='blue', s=100)
+        plt.plot(self.agent.traj_x, self.agent.traj_y, color='yellow', linewidth=2)
+        plt.scatter(self.goal.traj_g_x, self.goal.traj_g_y, color='green', s=100)
+
+        for obs in self.obstacles:
+            plt.scatter(obs.traj_x, obs.traj_y, color='red', s=50)
+            if hasattr(obs, '_obs'):
+                plt.plot(obs.traj_x, obs.traj_y, color='red', linewidth=2)
+
+        plt.xlim(-1, 1) 
+        plt.ylim(-1, 1)
+        plt.show()

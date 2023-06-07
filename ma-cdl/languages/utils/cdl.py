@@ -22,19 +22,24 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 class CDL:
     def __init__(self, scenario, world):
-        self.max_lines = 8
+        self.min_lines = 3
+        self.max_lines = 7
         self.world = world
         self.language = None
         self.scenario = scenario
-        self.configs_to_consider = 30
+        self.configs_to_consider = 25
         self.np_random = np.random.default_rng()
         self.weights = np.array([3, 2, 1.75, 3, 2])
         
-        agent_radius = world.agents[0].size
-        goal_radius = world.goals[0].size
-        obstacle_radius = world.obstacles[1].size
+        self.agent_radius = world.agents[0].size
+        self.goal_radius = world.goals[0].size
+        self.obstacle_radius = world.obstacles[1].size
         
-        self.planner = PathPlanner(agent_radius, goal_radius, obstacle_radius)
+        self.planner = PathPlanner(
+            self.agent_radius, 
+            self.goal_radius, 
+            self.obstacle_radius
+            )
     
     def _save(self, approach, problem_instance):
         directory = f'ma-cdl/languages/history/{approach}'
@@ -58,8 +63,7 @@ class CDL:
     def _visualize(self, approach, problem_instance):
         for idx, region in enumerate(self.language):
             plt.fill(*region.exterior.xy)
-            plt.text(region.centroid.x, region.centroid.y,
-                     idx, ha='center', va='center')
+            plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
 
         directory = 'ma-cdl/language/history'
         filename = f'{approach}-{problem_instance}.png'
@@ -127,58 +131,64 @@ class CDL:
         rand_idx = self.np_random.choice(len(self.world.agents))
         start = self.world.agents[rand_idx].state.p_pos
         goal = self.world.agents[rand_idx].goal_a.state.p_pos
-        static_obs = [obs.state.p_pos for obs in self.world.obstacles if obs.movable == False]
+        static_pos = [obs.state.p_pos for obs in self.world.obstacles if obs.movable == False]
         # get object instead of position because multiple attributes are needed (size, lock, position)
-        dynamic_obs = [obs for obs in self.world.obstacles if obs.movable == True]
+        dynamic_obj = [obs for obs in self.world.obstacles if obs.movable == True]
 
-        return start, goal, static_obs, dynamic_obs
+        return start, goal, static_pos, dynamic_obj
     
     # Create RTree index to more efficiently search points
-    def _create_index(self, obstacle_points, regions):
+    def _create_index(self, obstacles, regions):
         rtree = index.Index()
         for region_idx, region in enumerate(regions):
             rtree.insert(region_idx, region.bounds)
 
         obstacles_idx = set()
-        for obs in obstacle_points:
-            for region_idx in rtree.intersection((obs.x, obs.y)):
-                if regions[region_idx].contains(obs):
+        for obstacle in obstacles:
+            for region_idx in rtree.intersection(obstacle.bounds):
+                if regions[region_idx].intersects(obstacle):
                     obstacles_idx.add(region_idx)
         
         return obstacles_idx, rtree
     
     """
-    Calculate cost of a configuration (i.e. start, goal, and obstacles)
-    with respect to the regions and positions under some positional constraints: 
+    Calculate cost of a configuration (i.e. start position, goal position, and obstacle positions)
+    with respect to the regions:
         1. Unsafe area caused by all obstacles
         2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
     """
-    # TODO: Brainstorm what to do with dynamic obstacles in this case
-    def _problem_cost(self, start, goal, static_obs, dynamic_obs, regions):       
-        # obstacles = np.concatenate((static_obs, dynamic_obs))
-        # obstacle_points = points(obstacles)
+    def _config_cost(self, start, goal, static_pos, dynamic_obj, regions): 
+        obstacles = []
+        for obs_obj in dynamic_obj:
+            with obs_obj.lock:
+                obstacle = Point(obs_obj.state.p_pos).buffer(obs_obj.size)
+                obstacles.append(obstacle)
         
-        # all_obs_idx, rtree = self._create_index(obstacle_points, regions)
-        # nonnavigable = sum(regions[idx].area for idx in all_obs_idx)
+        for pos in static_pos:
+            obstacle = Point(pos).buffer(self.obstacle_radius)
+            obstacles.append(obstacle)
         
-        path = self.planner.get_path(start, goal, static_obs, dynamic_obs)
-        if path is None: return 4, 10
+        # Consider dyanmic obstacles at a snapshot in time
+        obstacles_idx, rtree = self._create_index(obstacles, regions)
+        nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
         
-        static_obs_points = points(static_obs)
-        static_obs_idx, _ = self._create_index(static_obs_points, regions)
-
-        unsafe = 0
+        path = self.planner.get_path(start, goal, static_pos, dynamic_obj)
+        
         num_path_checks = 10
-        significand = len(path) // num_path_checks
-        
-        for i in range(num_path_checks):
-            path_point = path[i * significand]
-            point = Point(path_point)            
-            for region_idx in rtree.intersection((point.x, point.y)):
-                if regions[region_idx].contains(point) and region_idx in static_obs_idx:
-                    unsafe += 1
-                    break
-
+        if path is not None: 
+            unsafe = 0
+            significand = len(path) // num_path_checks
+            
+            for i in range(num_path_checks):
+                path_point = path[i * significand]
+                agent = Point(path_point).buffer(self.agent_radius)            
+                for region_idx in rtree.intersection(agent.bounds):
+                    if regions[region_idx].intersects(agent) and region_idx in obstacles_idx:
+                        unsafe += 1
+                        break
+        else:
+            unsafe = int(num_path_checks * 1.5)
+            
         return nonnavigable, unsafe
     
     """ 
@@ -194,11 +204,11 @@ class CDL:
         i = 0
         nonnavigable, unsafe = [], []
         while i < self.configs_to_consider:
-            start, goal, static_obs, dynamic_obs = self._generate_configuration(problem_instance)
-            problem_cost = self._problem_cost(start, goal, static_obs, dynamic_obs, regions)
-            if problem_cost:
-                nonnavigable.append(problem_cost[0])
-                unsafe.append(problem_cost[1])
+            start, goal, static_pos, dynamic_obj = self._generate_configuration(problem_instance)
+            config_cost = self._config_cost(start, goal, static_pos, dynamic_obj, regions)
+            if config_cost:
+                nonnavigable.append(config_cost[0])
+                unsafe.append(config_cost[1])
                 i += 1
 
         unsafe_mu = mean(unsafe)

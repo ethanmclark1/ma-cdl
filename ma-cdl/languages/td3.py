@@ -42,7 +42,7 @@ class TD3(CDL):
         self._init_wandb()
         self.rng = np.random.default_rng()
         self.replay_buffer = ReplayBuffer()
-        self.autoencoder = AE(self.state_dims, self.rng)
+        self.autoencoder = AE(self.state_dims, self.rng, self.start_lines, self.max_lines)
         
         self.actor = Actor(self.state_dims, self.action_dims, self.action_range)
         self.actor_target = copy.deepcopy(self.actor)
@@ -226,7 +226,6 @@ class TD3(CDL):
     def _train(self, problem_instance):        
         valid_lines = CDL.get_valid_lines([])   
         default_square = CDL.create_regions(valid_lines)
-        # TODO: Retrain autoencoder due to more possible lines
         start_state = self.autoencoder.get_state(default_square)
         self._populate_buffer(problem_instance, start_state)
         

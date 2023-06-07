@@ -15,7 +15,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 IMAGE_SIZE = (64, 64)
 
 class AE:
-    def __init__(self, output_dims, rng):
+    def __init__(self, output_dims, rng, max_lines):
         self.model = Autoencoder(output_dims)
         try:
             state_dict = torch.load('ma-cdl/languages/history/ae.pth')
@@ -24,7 +24,7 @@ class AE:
             self._init_hyperparams()
             self._init_wandb()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, 1000)
+            self.dataset = ImageDataset(rng, 1000, max_lines)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
             self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
             self._train()
@@ -163,9 +163,10 @@ class AE:
         plt.show()
 
 class ImageDataset(Dataset):
-    def __init__(self, rng, num_episodes):
+    def __init__(self, rng, num_episodes, max_lines):
         self.rng = rng
         self.num_episodes = num_episodes
+        self.max_lines = max_lines
         try:
             self.images = self.load_images()
         except:
@@ -220,8 +221,7 @@ class ImageDataset(Dataset):
                 self.save_image(pixel_tensor, image_idx)
                 image_idx += 1
                 
-                # TODO: Increase number of liness
-                if len(valid_lines) == prev_num_lines or num_action == 6:
+                if len(valid_lines) == prev_num_lines or num_action == self.max_lines:
                     done = True
                     continue
                 

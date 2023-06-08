@@ -51,8 +51,9 @@ class Obstacle:
         # Dynamic obstacle
         else:
             self._obs = obs
-            self._x, self._y = self._obs.state.p_pos
-            self._size = self._obs.size
+            with self._obs.lock:
+                self._x, self._y = self._obs.state.p_pos
+                self._size = self._obs.size
 
     @property
     def x(self):
@@ -92,75 +93,76 @@ class Obstacle:
     def update(self):
         if hasattr(self, '_obs'):
             with self._obs.lock:
-                self.x = self._obs.state.p_pos[0]
-                self.y = self._obs.state.p_pos[1]
-                self.size = self._obs.size
-
+                self._x = self._obs.state.p_pos[0]
+                self._y = self._obs.state.p_pos[1]
+                self._size = self._obs.size
+                
+                self.traj_x.append(self._x)
+                self.traj_y.append(self._y)
+                
 
 class PotentialField:
     def __init__(self):
-        self.gain_attr = 0.25
-        self.gain_rep = 0.25
+        self.gain_attr = 0.225
+        self.gain_rep = 0.225
 
     def calc_input(self, goal_x, goal_y, state, obstacles):
-        term_attr = self._calc_attractive_term(goal_x, goal_y, state)
+        term_attr, dist_to_goal_sqr = self._calc_attractive_term(goal_x, goal_y, state)
         term_rep = self._calc_repulsive_term(state, obstacles)
         input = self.gain_attr * term_attr + self.gain_rep * term_rep
-        return input[0], input[1]
+        return input[0], input[1], dist_to_goal_sqr
 
     def _calc_repulsive_term(self, state, obstacles):
-        term = np.zeros(2)
-        for obs in obstacles:
-            dist_sqrd = (state.x - obs.x) ** 2 + (state.y - obs.y) ** 2 / obs.size ** 2
-            denom = dist_sqrd ** 1.5
-            term[0] += (state.x - obs.x) / denom
-            term[1] += (state.y - obs.y) / denom
+        obs_arr = np.array([(obs.x, obs.y, obs.size) for obs in obstacles])
+        dist_sqr_arr = (state.x - obs_arr[:,0]) ** 2 + (state.y - obs_arr[:,1]) ** 2 / obs_arr[:,2] ** 2
+        denom_arr = dist_sqr_arr ** 1.5
+        term = np.sum(np.vstack([(state.x - obs_arr[:,0]), (state.y - obs_arr[:,1])]) / denom_arr, axis=1)
         return term
 
     def _calc_attractive_term(self, goal_x, goal_y, state):
         term = np.zeros(2)
         term[0] = goal_x - state.x
         term[1] = goal_y - state.y
-        return term
-    
+        dist_to_goal_sqr = term[0] ** 2 + term[1] ** 2
+        return term, dist_to_goal_sqr
+
 
 class PathPlanner:
     def __init__(self, agent_radius, goal_radius, obs_radius):
         self.dt = 0.15
-                        
         self.agent = Agent(agent_radius)
         self.goal = Goal(goal_radius)
         self.obs_radius = obs_radius
         self.potential_field = PotentialField()
-    
-    # TODO: Make sure dynamic obstacles are updated
-    def get_path(self, start, goal, static_obs, dynamic_obs, visualize=True):
+        self.max_timestep = 80
+        self.traj_x = np.zeros(self.max_timestep)
+        self.traj_y = np.zeros(self.max_timestep)
+
+    def get_path(self, start, goal, static_obs, dynamic_obs, visualize=False):
         path = None
         self.agent.set_state(start)
         self.goal.set_state(goal)
         self.obstacles = [Obstacle(obs) for obs in dynamic_obs]
         self.obstacles += [Obstacle(obs, self.obs_radius) for obs in static_obs]
-    
+        
         goal_x, goal_y = self.goal.get_pos()
-        goal_thresh = self.agent.radius + self.goal.radius
-        max_timestep = 250
-
+        goal_thresh_sqr = (self.agent.radius + self.goal.radius)**2
+        
         time_step = 0
-        while True:
-            [obs.update() for obs in self.obstacles]
-            u_x, u_y = self.potential_field.calc_input(goal_x, goal_y, self.agent, self.obstacles)
+        while time_step < self.max_timestep:
+            for obs in self.obstacles:
+                obs.update()
+            u_x, u_y, dist_to_goal_sqr = self.potential_field.calc_input(goal_x, goal_y, self.agent, self.obstacles)
 
             self.agent.update_state(u_x, u_y, self.dt)
+            self.traj_x[time_step] = self.agent.x
+            self.traj_y[time_step] = self.agent.y
 
-            dist_to_goal = np.sqrt((goal_x - self.agent.x) ** 2 + (goal_y - self.agent.y) ** 2)
-
-            if dist_to_goal < goal_thresh:
-                path = np.vstack((self.agent.traj_x, self.agent.traj_y)).T
+            if dist_to_goal_sqr < goal_thresh_sqr:
+                path = np.vstack((self.traj_x[:time_step+1], self.traj_y[:time_step+1])).T
                 break
-                
+            
             time_step += 1
-            if time_step >= max_timestep:
-                break
 
         if visualize and path is not None:
             self._visualize(path)

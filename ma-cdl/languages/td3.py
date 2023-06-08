@@ -42,7 +42,7 @@ class TD3(CDL):
         self._init_wandb()
         self.rng = np.random.default_rng()
         self.replay_buffer = ReplayBuffer()
-        self.autoencoder = AE(self.state_dims, self.rng, self.start_lines, self.max_lines)
+        self.autoencoder = AE(self.state_dims, self.rng, self.max_lines)
         
         self.actor = Actor(self.state_dims, self.action_dims, self.action_range)
         self.actor_target = copy.deepcopy(self.actor)
@@ -59,7 +59,7 @@ class TD3(CDL):
         self.action_range = 1
         self.num_dummy = 150000
         self.noise_clip = 0.025
-        self.reward_thres = -20
+        self.reward_thres = -30
         self.num_episodes = 1000
         self.policy_noise = 0.005
         self.num_iterations = 100
@@ -111,13 +111,10 @@ class TD3(CDL):
             done = True
             reward = _reward
             self.valid_lines.clear()
-        elif num_action > 4:
-            if num_action == self.max_lines:
-                done = True
-                reward = _reward
-                self.valid_lines.clear()
-            else:
-                reward = -10
+        elif num_action == self.max_lines: 
+            done = True
+            reward = _reward
+            self.valid_lines.clear()
             
         next_state = self.autoencoder.get_state(regions)
         return reward, next_state, done, regions

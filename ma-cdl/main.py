@@ -21,21 +21,21 @@ class MA_CDL():
         obs_dim = self.env.observation_space(self.env.possible_agents[0]).shape[0]
                 
         self.ea = EA(scenario, world)
-        # self.td3 = TD3(scenario, world)
+        self.td3 = TD3(scenario, world)
         self.bandit = Bandit(scenario, world) 
         
         self.speaker = Speaker()
         self.listener = [Listener(problem_type, obs_dim) for _ in range(num_agents)]
         
     def retrieve_languages(self, problem_type):
-        approaches = ['ea', 'td3', 'bandit']
         problem_instances = [problem_type + f'_{i}' for i in range(4)]
-        language_set = {approach: {instance: None for instance in problem_instances} for approach in approaches}   
+        language_set = {approach: {instance: None for instance in problem_instances} 
+                        for approach in ['ea', 'td3', 'bandit']}   
         
-        for approach, instance in zip(approaches, problem_instances):
-            language_set[approach][instance] = self.ea.get_language(instance)
-            language_set[approach][instance] = self.td3.get_language(instance)
-            language_set[approach][instance] = self.bandit.get_language(instance)     
+        for instance in problem_instances:
+            # language_set['ea'][instance] = self.ea.get_language(instance)
+            language_set['td3'][instance] = self.td3.get_language(instance)
+            language_set['bandit'][instance] = self.bandit.get_language(instance)
         
         return language_set
 
@@ -149,6 +149,6 @@ if __name__ == '__main__':
     ma_cdl = MA_CDL(problem_type, num_agents, render_mode)
     
     language_set = ma_cdl.retrieve_languages(problem_type)
-    ma_cdl.teach_language(language_set)
-    results, avg_direction_len = ma_cdl.act(problem_type, language_set)
-    ma_cdl.plot(results, avg_direction_len)
+    # ma_cdl.teach_language(language_set)
+    # results, avg_direction_len = ma_cdl.act(problem_type, language_set)
+    # ma_cdl.plot(results, avg_direction_len)

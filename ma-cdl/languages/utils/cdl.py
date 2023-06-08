@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from rtree import index
-from shapely import points
 from itertools import product
 from statistics import mean, variance
 from languages.utils.potential_field import PathPlanner
@@ -27,7 +26,7 @@ class CDL:
         self.world = world
         self.language = None
         self.scenario = scenario
-        self.configs_to_consider = 25
+        self.configs_to_consider = 10
         self.np_random = np.random.default_rng()
         self.weights = np.array([3, 2, 1.75, 3, 2])
         
@@ -173,6 +172,7 @@ class CDL:
         nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
         
         path = self.planner.get_path(start, goal, static_pos, dynamic_obj)
+        self.scenario.stop_scripted_obstacles()
         
         num_path_checks = 10
         if path is not None: 
@@ -187,7 +187,7 @@ class CDL:
                         unsafe += 1
                         break
         else:
-            unsafe = int(num_path_checks * 1.5)
+            unsafe = int(num_path_checks * 2)
             
         return nonnavigable, unsafe
     

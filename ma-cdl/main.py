@@ -12,6 +12,10 @@ from languages.td3 import TD3
 from languages.bandit import Bandit
 from languages.evolutionary_algo import EA
 
+from languages.baselines.grid_world import GridWorld
+from languages.baselines.voronoi_map import VoronoiMap
+from languages.baselines.direct_path import DirectPath
+
 class MA_CDL():
     def __init__(self, num_agents, num_large_obstacles, num_small_obstacles, render_mode):
         
@@ -24,25 +28,30 @@ class MA_CDL():
         
         scenario = self.env.unwrapped.scenario
         world = self.env.unwrapped.world
-                
-        self.ea = EA(scenario, world)
-        self.td3 = TD3(scenario, world)
-        self.bandit = Bandit(scenario, world) 
-        
-        self.speaker = Speaker()
-        
         agent_radius = world.agents[0].size
         goal_radius = world.goals[0].size
         obs_radius = world.small_obstacles[0].size
         
+        # Approaches
+        self.ea = EA(scenario, world)
+        self.td3 = TD3(scenario, world)
+        self.bandit = Bandit(scenario, world) 
+        
+        # Baselines
+        self.grid_world = GridWorld()
+        self.voronoi_map = VoronoiMap()
+        self.direct_search = DirectPath()
+        
+        self.speaker = Speaker()
         self.listener = [Listener(agent_radius, goal_radius, obs_radius) for _ in range(num_agents)]
-        
+    
+    # TODO: Integrate baselines
     def retrieve_languages(self, problem_instance):
-        language_set = {approach: None for approach in ['ea', 'td3', 'bandit']}   
+        approaches = ['td3', 'ea', 'bandit']
+        language_set = {approach: None for approach in approaches}   
         
-        language_set['ea'] = self.ea.get_language(problem_instance)
-        language_set['td3'] = self.td3.get_language(problem_instance)
-        language_set['bandit'] = self.bandit.get_language(problem_instance)
+        for approach in approaches:
+            language_set[approach] = getattr(self, approach).get_language(problem_instance)
         
         return language_set
 

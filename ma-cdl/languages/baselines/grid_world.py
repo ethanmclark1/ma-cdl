@@ -2,7 +2,7 @@ import numpy as np
 import networkx as nx
 
 class GridWorld:
-    def __init__(self, state_ranges=((0, 1), (0, 1)), n_bins=(10, 10)):
+    def __init__(self, state_ranges=((-1, 1), (-1, 1)), n_bins=(10, 10)):
         self.state_ranges = state_ranges
         self.n_bins = n_bins
         self.graph = nx.grid_graph(n_bins, periodic=False)
@@ -25,7 +25,6 @@ class GridWorld:
             continuous_state.append(continuous_val)
         return tuple(continuous_state)
 
-    # Inexpressive
     def direct(self, start_pos, goal_pos, obstacles):
         n_bins = (10, 10)
         temp_graph = self.graph.copy()

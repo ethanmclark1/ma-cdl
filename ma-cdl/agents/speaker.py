@@ -12,7 +12,7 @@ class Speaker:
             region_idx = None
         return region_idx    
     
-    # TODO: Figure out way to account for dynamic obstacles
+    # TODO: Account for multiple agents and goals
     def direct(self, entity_positions, language):
         directions = []
         
@@ -26,7 +26,3 @@ class Speaker:
             goal_idx = self.localize(Point(g_pos), language)
             directions += [a_star(start_idx, goal_idx, obstacles, language)]
         return directions
-    
-    # Give reward to listener based on adherence to directions
-    def reward_to_listener(self, observation, directions, termination, truncation):
-        a=3

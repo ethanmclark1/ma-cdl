@@ -10,21 +10,21 @@ class EA(CDL):
     def __init__(self, scenario, world):
         super().__init__(scenario, world)
                 
-    def _optimizer(self, coeffs, instance):
+    def _optimizer(self, coeffs, problem_instance):
         lines = CDL.get_lines_from_coeffs(coeffs)
         valid_lines = CDL.get_valid_lines(lines)
         regions = CDL.create_regions(valid_lines)
-        scenario_cost = super()._optimizer(regions, instance)
+        scenario_cost = super()._optimizer(regions, problem_instance)
         return scenario_cost
         
     # Minimizes cost function to generate the optimal lines
-    def _generate_optimal_coeffs(self, instance):
+    def _generate_optimal_coeffs(self, problem_instance):
         lb, ub = -1, 1
         optim_val, optim_coeffs = inf, None
         start = time.time()
         for num in range(self.min_lines, self.max_lines):
             bounds = [(lb, ub) for _ in range(3*num)]
-            res = optimize.differential_evolution(self._optimizer, bounds, args=(instance,),
+            res = optimize.differential_evolution(self._optimizer, bounds, args=(problem_instance,),
                                                   maxiter=100*num, init='sobol')
             print(f'Cost: {res.fun}')
             if optim_val > res.fun:

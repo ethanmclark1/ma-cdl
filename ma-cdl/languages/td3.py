@@ -107,20 +107,25 @@ class TD3(CDL):
         regions = CDL.create_regions(list(self.valid_lines))
         _reward = -super()._optimizer(regions, problem_instance)
         
-        if len(self.valid_lines) == prev_num_lines or _reward > self.reward_thres:
+        if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines or _reward > self.reward_thres:
             done = True
-            reward = _reward
-            self.valid_lines.clear()
-        elif num_action == self.max_lines: 
-            done = True
-            reward = _reward
+            # Convert to a positive reward
+            reward = 200 + _reward
             self.valid_lines.clear()
             
         next_state = self.autoencoder.get_state(regions)
         return reward, next_state, done, regions
     
-    # Shuffle actions to remove order dependency
-    # TODO: Only shuffle a percentage of the possible permutations
+    # Sample permutations of steps to force order invariance and reduce sequential correlation
+    def _sample_permutations(self):
+        num_permutations = 5
+        if len(self.actions) <= num_permutations:
+            shuffled_actions = [np.array(p) for p in itertools.permutations(self.actions)]
+        else:
+            shuffled_actions = [self.rng.permutation(self.actions) for _ in range(num_permutations)]
+        return shuffled_actions
+    
+    # Shuffle actions to force order invariance
     def _remember(self, state, action, reward, next_state, done):
         self.states.append(state)
         self.actions.append(action)
@@ -129,11 +134,11 @@ class TD3(CDL):
         self.dones.append(done)
         
         if done:
-            shuffled_actions = list(itertools.permutations(self.actions))
+            shuffled_actions = self._sample_permutations()
+            default_boundary_lines = set(CDL.get_valid_lines([]))
             for shuffled_action in shuffled_actions:
                 _state = self.states[0]
-                # Returns default boundary lines
-                self.valid_lines = set(CDL.get_valid_lines([]))
+                self.valid_lines = copy.deepcopy(default_boundary_lines)
                 for action_idx, _action in enumerate(shuffled_action):
                     lines = CDL.get_lines_from_coeffs(_action)
                     valid_lines = CDL.get_valid_lines(lines)
@@ -145,9 +150,13 @@ class TD3(CDL):
                              
                     self.replay_buffer.add(_state, _action, _reward, _next_state, _done)
                     _state = _next_state
-
-            self.states, self.actions, self.rewards, self.next_states, self.dones = \
-                [], [], [], [], []
+            
+            self.states = []
+            self.actions = []
+            self.rewards = []
+            self.next_states = []
+            self.dones = []
+            self.valid_lines = copy.deepcopy(default_boundary_lines)
     
     # Populate replay buffer with dummy transitions
     def _populate_buffer(self, problem_instance, start_state):

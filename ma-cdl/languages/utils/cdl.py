@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from rtree import index
 from itertools import product
 from statistics import mean, variance
-from languages.utils.potential_field import PathPlanner
+from languages.utils.rrt_star import RRTStar
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -21,20 +21,20 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 class CDL:
     def __init__(self, scenario, world):
-        self.min_lines = 3
-        self.max_lines = 7
+        self.min_lines = 4
+        self.max_lines = 8
         self.world = world
         self.language = None
         self.scenario = scenario
-        self.configs_to_consider = 10
+        self.configs_to_consider = 30
         self.np_random = np.random.default_rng()
         self.weights = np.array([3, 2, 1.75, 3, 2])
         
         self.agent_radius = world.agents[0].size
         self.goal_radius = world.goals[0].size
-        self.obstacle_radius = world.obstacles[1].size
+        self.obstacle_radius = world.large_obstacles[0].size
         
-        self.planner = PathPlanner(
+        self.planner = RRTStar(
             self.agent_radius, 
             self.goal_radius, 
             self.obstacle_radius
@@ -124,17 +124,14 @@ class CDL:
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):
-        instance_num = problem_instance[-1]
-        self.scenario.reset_world(self.world, self.np_random, instance_num)
+        self.scenario.reset_world(self.world, self.np_random, problem_instance)
         
         rand_idx = self.np_random.choice(len(self.world.agents))
         start = self.world.agents[rand_idx].state.p_pos
         goal = self.world.agents[rand_idx].goal_a.state.p_pos
-        static_pos = [obs.state.p_pos for obs in self.world.obstacles if obs.movable == False]
-        # get object instead of position because multiple attributes are needed (size, lock, position)
-        dynamic_obj = [obs for obs in self.world.obstacles if obs.movable == True]
+        obstacles = [obs.state.p_pos for obs in self.world.large_obstacles]
 
-        return start, goal, static_pos, dynamic_obj
+        return start, goal, obstacles
     
     # Create RTree index to more efficiently search points
     def _create_index(self, obstacles, regions):
@@ -156,38 +153,28 @@ class CDL:
         1. Unsafe area caused by all obstacles
         2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
     """
-    def _config_cost(self, start, goal, static_pos, dynamic_obj, regions): 
-        obstacles = []
-        for obs_obj in dynamic_obj:
-            with obs_obj.lock:
-                obstacle = Point(obs_obj.state.p_pos).buffer(obs_obj.size)
-                obstacles.append(obstacle)
+    def _config_cost(self, start, goal, obstacles, regions): 
+        obstacles_with_size = [Point(obs_pos).buffer(self.obstacle_radius) for obs_pos in obstacles]
         
-        for pos in static_pos:
-            obstacle = Point(pos).buffer(self.obstacle_radius)
-            obstacles.append(obstacle)
-        
-        # Consider dyanmic obstacles at a snapshot in time
-        obstacles_idx, rtree = self._create_index(obstacles, regions)
+        obstacles_idx, rtree = self._create_index(obstacles_with_size, regions)
         nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
         
-        path = self.planner.get_path(start, goal, static_pos, dynamic_obj)
-        self.scenario.stop_scripted_obstacles()
+        path = self.planner.get_path(start, goal, obstacles)
         
         num_path_checks = 10
         if path is not None: 
             unsafe = 0
-            significand = len(path) // num_path_checks
+            indices = np.linspace(0, len(path) - 1, num_path_checks, dtype=int)
             
-            for i in range(num_path_checks):
-                path_point = path[i * significand]
+            for i in indices:
+                path_point = path[i]
                 agent = Point(path_point).buffer(self.agent_radius)            
                 for region_idx in rtree.intersection(agent.bounds):
                     if regions[region_idx].intersects(agent) and region_idx in obstacles_idx:
                         unsafe += 1
                         break
         else:
-            unsafe = int(num_path_checks * 2)
+            unsafe = int(num_path_checks * 1.5)
             
         return nonnavigable, unsafe
     
@@ -204,8 +191,8 @@ class CDL:
         i = 0
         nonnavigable, unsafe = [], []
         while i < self.configs_to_consider:
-            start, goal, static_pos, dynamic_obj = self._generate_configuration(problem_instance)
-            config_cost = self._config_cost(start, goal, static_pos, dynamic_obj, regions)
+            start, goal, obstacles = self._generate_configuration(problem_instance)
+            config_cost = self._config_cost(start, goal, obstacles, regions)
             if config_cost:
                 nonnavigable.append(config_cost[0])
                 unsafe.append(config_cost[1])
@@ -219,7 +206,7 @@ class CDL:
 
         # No regions were created
         if nonnavigable_mu > 3.95:
-            instance_cost = 10e3
+            instance_cost = 5e2
         else:
             criterion = np.array([unsafe_mu, unsafe_var, efficiency, nonnavigable_mu, nonnavigable_var])
             instance_cost = np.sum(self.weights * criterion)

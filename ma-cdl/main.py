@@ -13,29 +13,36 @@ from languages.bandit import Bandit
 from languages.evolutionary_algo import EA
 
 class MA_CDL():
-    def __init__(self, problem_type, num_agents, render_mode):
-        self.env = Signal8.env(problem_type, num_agents, render_mode)
+    def __init__(self, num_agents, num_large_obstacles, num_small_obstacles, render_mode):
+        
+        self.env = Signal8.env(
+            num_agents, 
+            num_large_obstacles, 
+            num_small_obstacles, 
+            render_mode
+            )
         
         scenario = self.env.unwrapped.scenario
         world = self.env.unwrapped.world
-        obs_dim = self.env.observation_space(self.env.possible_agents[0]).shape[0]
                 
         self.ea = EA(scenario, world)
         self.td3 = TD3(scenario, world)
         self.bandit = Bandit(scenario, world) 
         
         self.speaker = Speaker()
-        self.listener = [Listener(problem_type, obs_dim) for _ in range(num_agents)]
         
-    def retrieve_languages(self, problem_type):
-        problem_instances = [problem_type + f'_{i}' for i in range(4)]
-        language_set = {approach: {instance: None for instance in problem_instances} 
-                        for approach in ['ea', 'td3', 'bandit']}   
+        agent_radius = world.agents[0].size
+        goal_radius = world.goals[0].size
+        obs_radius = world.small_obstacles[0].size
         
-        for instance in problem_instances:
-            # language_set['ea'][instance] = self.ea.get_language(instance)
-            language_set['td3'][instance] = self.td3.get_language(instance)
-            language_set['bandit'][instance] = self.bandit.get_language(instance)
+        self.listener = [Listener(agent_radius, goal_radius, obs_radius) for _ in range(num_agents)]
+        
+    def retrieve_languages(self, problem_instance):
+        language_set = {approach: None for approach in ['ea', 'td3', 'bandit']}   
+        
+        language_set['ea'] = self.ea.get_language(problem_instance)
+        language_set['td3'] = self.td3.get_language(problem_instance)
+        language_set['bandit'] = self.bandit.get_language(problem_instance)
         
         return language_set
 
@@ -70,8 +77,6 @@ class MA_CDL():
                     action = self.listener[i].get_action(observation, directions)
                     self.env.step(action)
                     observation, _, termination, truncation, _ = self.env.last()
-                    listener_reward = self.speaker.reward_to_listener(observation, directions, termination, truncation)
-                    speaker_reward = self.listener[i].reward_to_speaker(observation)
                                 
                     if termination:
                         results[approach][instance] += 1
@@ -137,18 +142,24 @@ class MA_CDL():
             axes2[i].set_xticklabels(_labels)
             axes2[i].legend()
         
-        # Save the figures
         fig1.savefig('success_rates.png')
-        fig2.savefig('average_direction_lengths.png')
-        
-        # Show the plots in separate windows
+        fig2.savefig('average_direction_lengths.png')        
         plt.show()
+        
 
 if __name__ == '__main__':
-    problem_type, num_agents, render_mode = get_arguments()
-    ma_cdl = MA_CDL(problem_type, num_agents, render_mode)
+    num_agents, num_large_obstacles, num_small_obstacles, render_mode = get_arguments()
     
-    language_set = ma_cdl.retrieve_languages(problem_type)
-    # ma_cdl.teach_language(language_set)
-    # results, avg_direction_len = ma_cdl.act(problem_type, language_set)
-    # ma_cdl.plot(results, avg_direction_len)
+    ma_cdl = MA_CDL(
+        num_agents, 
+        num_large_obstacles, 
+        num_small_obstacles, 
+        render_mode
+        )
+    
+    problem_instances = ma_cdl.env.unwrapped.world.problem_list
+    
+    for problem_type in problem_instances:
+        language_set = ma_cdl.retrieve_languages(problem_type)
+        results, avg_direction_len = ma_cdl.act(language_set)
+        ma_cdl.plot(results, avg_direction_len)

@@ -2,7 +2,6 @@ import Signal8
 import numpy as np
 import matplotlib.pyplot as plt
 
-from itertools import product
 from arguments import get_arguments
 
 from agents.speaker import Speaker
@@ -42,12 +41,13 @@ class MA_CDL():
         self.voronoi_map = VoronoiMap()
         self.direct_search = DirectPath()
         
-        self.speaker = Speaker()
+        self.speaker = Speaker(num_agents)
         self.listener = [Listener(agent_radius, goal_radius, obs_radius) for _ in range(num_agents)]
     
     # TODO: Integrate baselines
     def retrieve_languages(self, problem_instance):
-        approaches = ['td3', 'ea', 'bandit']
+        # approaches = ['ea', 'td3', 'bandit']
+        approaches = ['ea']
         language_set = {approach: None for approach in approaches}   
         
         for approach in approaches:
@@ -55,31 +55,27 @@ class MA_CDL():
         
         return language_set
 
-    def act(self, problem_type, language_set):
+    def act(self, problem_instance, language_set):
+        ea = language_set['ea']
+        td3 = language_set['td3']
+        bandit = language_set['bandit']
         approaches = list(language_set.keys())
+    
+        results = {approach: 0 for approach in approaches}
+        direction_len = {approach: [] for approach in approaches}
         direction_set = {approach: None for approach in approaches}
-        problem_instances = [problem_type + f'_{i}' for i in range(4)]
-        direction_len = {approach: {instance: [] for instance in problem_instances} for approach in approaches}
-        results = {approach: {instance: 0 for instance in problem_instances} for approach in approaches}
         
-        for _, instance in product(range(10), problem_instances):
-            ea = language_set['ea'][instance]
-            td3 = language_set['td3'][instance]
-            bandit = language_set['bandit'][instance]
+        for _ in range(10):            
+            self.env.reset(options={'problem_instance': problem_instance})
+            start_state = self.env.state()
+            direction_set['ea'] = self.speaker.direct(start_state, ea)
+            direction_set['td3'] = self.speaker.direct(start_state, td3)
+            direction_set['bandit'] = self.speaker.direct(start_state, bandit)
             
-            instance_num = int(instance[-1])
-            self.env.reset(options={'instance_num': instance_num})
-            entity_positions = self.env.unwrapped.get_start_state()
-            
-            direction_set['ea'] = self.speaker.direct(entity_positions, ea)    
-            direction_set['td3'] = self.speaker.direct(entity_positions, td3)    
-            direction_set['bandit'] = self.speaker.direct(entity_positions, bandit)
-            
-            # TODO: Test functionality for multiple agents
+            # TODO: Implement functionality for multiple ground agents
             for approach in direction_set.keys():   
-                i = 0             
                 directions = direction_set[approach]
-                direction_len[approach][instance].append(len(directions))
+                direction_len[approach].append(len(directions))
                 observation, _, termination, truncation, _ = self.env.last()
 
                 while not (termination or truncation):
@@ -88,7 +84,7 @@ class MA_CDL():
                     observation, _, termination, truncation, _ = self.env.last()
                                 
                     if termination:
-                        results[approach][instance] += 1
+                        results[approach] += 1
                         self.env.terminations['agent_0'] = False
                         break
                     elif truncation:
@@ -97,9 +93,7 @@ class MA_CDL():
                     
                     i += 1
                     i = i % len(directions)
-                    
-                    # TODO: Figure out how to reward speaker and listener
-        
+                            
         self.env.close()
         avg_direction_len = {approach: {instance: np.mean(values) for instance, values in scenario_dict.items()} 
                          for approach, scenario_dict in direction_len.items()}
@@ -168,7 +162,7 @@ if __name__ == '__main__':
     
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
     
-    for problem_type in problem_instances:
-        language_set = ma_cdl.retrieve_languages(problem_type)
-        results, avg_direction_len = ma_cdl.act(language_set)
-        ma_cdl.plot(results, avg_direction_len)
+    for problem_instance in problem_instances:
+        language_set = ma_cdl.retrieve_languages(problem_instance)
+        # results, avg_direction_len = ma_cdl.act(language_set)
+        # ma_cdl.plot(results, avg_direction_len)

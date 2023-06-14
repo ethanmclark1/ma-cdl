@@ -2,8 +2,8 @@ from shapely import Point
 from agents.utils.a_star import a_star
 
 class Speaker:
-    def __init__(self):
-        self.language = None
+    def __init__(self, num_agents):
+        self.num_agents = num_agents
         
     def localize(self, pos, language):
         try:
@@ -12,17 +12,19 @@ class Speaker:
             region_idx = None
         return region_idx    
     
-    # TODO: Account for multiple agents and goals
-    def direct(self, entity_positions, language):
+    # Provide directions for each agent to get to their respective goal
+    def direct(self, state, language):
         directions = []
         
-        agent_pos = entity_positions['agents']
-        goal_pos = entity_positions['goals']
-        obs_pos = entity_positions['obstacles']
+        obs_pos = state[-self.num_agents*2:-self.num_agents*2+2]
         obstacles = [Point(obs) for obs in obs_pos]
         
-        for a_pos, g_pos in zip(agent_pos, goal_pos):
-            start_idx = self.localize(Point(a_pos), language)
-            goal_idx = self.localize(Point(g_pos), language)
+        for idx in range(self.num_agents):
+            start_pos = state[idx*2:idx*2+2]
+            start_idx = self.localize(Point(start_pos), language)
+            goal_pos = state
+            goal_idx = self.localize(Point(goal_pos), language)
+            
             directions += [a_star(start_idx, goal_idx, obstacles, language)]
+                    
         return directions

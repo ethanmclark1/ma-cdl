@@ -24,7 +24,7 @@ class AE:
             self._init_hyperparams()
             self._init_wandb()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, 1000, max_lines)
+            self.dataset = ImageDataset(rng, self.num_train_epochs, max_lines)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
             self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
             self._train()

@@ -49,6 +49,7 @@ class Autoencoder(nn.Module):
         with torch.no_grad():
             encoded = self.encoder(x)
         return encoded.flatten().numpy()
+    
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):
@@ -64,6 +65,7 @@ class Actor(nn.Module):
         x = F.relu(self.l2(x))
         x = self.max_action * torch.tanh(self.l3(x))
         return x
+    
     
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim):
@@ -100,3 +102,18 @@ class Critic(nn.Module):
         x1 = F.relu(self.l2(x1))
         x1 = self.l3(x1)
         return x1
+
+
+class REINFORCE(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(REINFORCE, self).__init__()
+        self.l1 = nn.Linear(state_dim, 8)
+        self.l2 = nn.Linear(8, 16)
+        self.l3 = nn.Linear(16, action_dim)
+        
+    def forward(self, context):
+        context = torch.FloatTensor([context])
+        x = F.relu(self.l1(context))
+        x = F.relu(self.l2(x))
+        x = F.relu(self.l3(x))
+        return x

@@ -18,7 +18,7 @@ class AE:
     def __init__(self, output_dims, rng, max_lines):
         self.model = Autoencoder(output_dims)
         try:
-            state_dict = torch.load('ma-cdl/languages/history/ae.pth')
+            state_dict = torch.load('ma-cdl/languages/history/AE.pth')
             self.model.load_state_dict(state_dict)
         except:
             self._init_hyperparams()

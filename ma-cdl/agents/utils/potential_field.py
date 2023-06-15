@@ -39,66 +39,13 @@ class Goal:
 
 
 class Obstacle:
-    def __init__(self, obs, size=None):
+    def __init__(self, obs, size):
         self.traj_x = []
         self.traj_y = []
-        # Static obstacle
-        if size is not None:
-            self._x, self._y = obs
-            self._size = size
-            self.traj_x.append(self._x)
-            self.traj_y.append(self._y)
-        # Dynamic obstacle
-        else:
-            self._obs = obs
-            with self._obs.lock:
-                self._x, self._y = self._obs.state.p_pos
-                self._size = self._obs.size
-
-    @property
-    def x(self):
-        if hasattr(self, '_obs'):
-            with self._obs.lock:
-                self._x = self._obs.state.p_pos[0]
-        return self._x
-
-    @property
-    def y(self):
-        if hasattr(self, '_obs'):
-            with self._obs.lock:
-                self._y = self._obs.state.p_pos[1]
-        return self._y
-
-    @property
-    def size(self):
-        if hasattr(self, '_obs'):
-            with self._obs.lock:
-                self._size = self._obs.size
-        return self._size
-
-    @x.setter
-    def x(self, value):
-        self._x = value
-        self.traj_x.append(value)
-
-    @y.setter
-    def y(self, value):
-        self._y = value
-        self.traj_y.append(value)
-
-    @size.setter
-    def size(self, value):
-        self._size = value
-
-    def update(self):
-        if hasattr(self, '_obs'):
-            with self._obs.lock:
-                self._x = self._obs.state.p_pos[0]
-                self._y = self._obs.state.p_pos[1]
-                self._size = self._obs.size
-                
-                self.traj_x.append(self._x)
-                self.traj_y.append(self._y)
+        self._x, self._y = obs
+        self._size = size
+        self.traj_x.append(self._x)
+        self.traj_y.append(self._y)
                 
 
 class PotentialField:
@@ -145,12 +92,10 @@ class PathPlanner:
         self.obstacles = [Obstacle(obs, self.obs_radius) for obs in obstacles]
         
         goal_x, goal_y = self.goal.get_pos()
-        goal_thresh_sqr = (self.agent.radius + self.goal.radius)**2
+        goal_thresh_sqr = (self.agent.radius + self.goal.radius) ** 2
         
         time_step = 0
         while time_step < self.max_timestep:
-            for obs in self.obstacles:
-                obs.update()
             u_x, u_y, dist_to_goal_sqr = self.potential_field.calc_input(goal_x, goal_y, self.agent, self.obstacles)
 
             self.agent.update_state(u_x, u_y, self.dt)

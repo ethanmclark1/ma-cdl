@@ -8,16 +8,13 @@ Version: 21d162f
 License: MIT License
 """
 
-import io        
 import copy
 import wandb
 import torch
 import itertools
 import numpy as np
-import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
-from PIL import Image
 from torch.optim import Adam
 from languages.utils.ae import AE
 from languages.utils.cdl import CDL
@@ -35,7 +32,8 @@ class TD3(CDL):
         self.dones = []
         self.valid_lines = set()
     
-        self.action_dims = 3
+        self.action_dim = 3
+        self.action_range = 1
         self.state_dims = 128
         
         self._init_hyperparams()
@@ -44,11 +42,11 @@ class TD3(CDL):
         self.replay_buffer = ReplayBuffer()
         self.autoencoder = AE(self.state_dims, self.rng, self.max_lines)
         
-        self.actor = Actor(self.state_dims, self.action_dims, self.action_range)
+        self.actor = Actor(self.state_dims, self.action_dim, self.action_range)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = Adam(self.actor.parameters())
         
-        self.critic = Critic(self.state_dims, self.action_dims)
+        self.critic = Critic(self.state_dims, self.action_dim)
         self.critic_target = copy.deepcopy(self.critic)
         self.critic_optimizer = Adam(self.critic.parameters())  
         
@@ -56,10 +54,9 @@ class TD3(CDL):
         self.tau = 0.005
         self.gamma = 0.99
         self.batch_size = 64
-        self.action_range = 1
         self.num_dummy = 150000
         self.noise_clip = 0.025
-        self.reward_thres = -30
+        self.penalty_thresh = -30
         self.num_episodes = 1000
         self.policy_noise = 0.005
         self.num_iterations = 100
@@ -80,18 +77,7 @@ class TD3(CDL):
     
     # Upload regions to Weights and Biases
     def _log_regions(self, problem_instance, episode, regions, reward):
-        _, ax = plt.subplots()
-        problem_instance = problem_instance.capitalize()
-        for idx, region in enumerate(regions):
-            ax.fill(*region.exterior.xy)
-            ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-        ax.set_title(f'problem_instance: {problem_instance}   Episode: {episode}   Reward: {reward:.2f}')
-
-        buffer = io.BytesIO()
-        plt.savefig(buffer, format='png')
-        buffer.seek(0)
-        pil_image = Image.open(buffer)
-
+        pil_image = super()._get_image(problem_instance, 'episode', episode, regions, reward)
         wandb.log({"image": wandb.Image(pil_image)})
             
     # Overlay lines in the environment
@@ -105,18 +91,18 @@ class TD3(CDL):
         valid_lines = CDL.get_valid_lines(line)
         self.valid_lines.update(valid_lines)
         regions = CDL.create_regions(list(self.valid_lines))
-        _reward = -super()._optimizer(regions, problem_instance)
+        _reward = -super().optimizer(regions, problem_instance)
         
-        if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines or _reward > self.reward_thres:
+        if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines or _reward > self.penalty_thresh:
             done = True
-            # Convert to a positive reward
-            reward = 200 + _reward
+            reward = _reward
             self.valid_lines.clear()
             
         next_state = self.autoencoder.get_state(regions)
         return reward, next_state, done, regions
     
     # Sample permutations of steps to force order invariance and reduce sequential correlation
+    # TODO: Need to adjust state and next_state accordingly
     def _sample_permutations(self):
         num_permutations = 5
         if len(self.actions) <= num_permutations:
@@ -163,7 +149,7 @@ class TD3(CDL):
         num_action = 1
         state = start_state
         while len(self.replay_buffer) < self.num_dummy:
-            action = self.rng.uniform(-self.action_range, self.action_range, size=self.action_dims)
+            action = self.rng.uniform(-self.action_range, self.action_range, size=self.action_dim)
             reward, next_state, done, _ = self._step(problem_instance, action, num_action)
             self._remember(state, action, reward, next_state, done)
             
@@ -179,7 +165,7 @@ class TD3(CDL):
         state = torch.FloatTensor(state)
         action = self.actor(state).data.numpy().flatten()
         if noise != 0:
-            action = (action + self.rng.uniform(0, noise, size=self.action_dims)).clip(-self.action_range, self.action_range)
+            action = (action + self.rng.uniform(0, noise, size=self.action_dim)).clip(-self.action_range, self.action_range)
             
         return action
     
@@ -236,7 +222,7 @@ class TD3(CDL):
         self._populate_buffer(problem_instance, start_state)
         
         rewards = []     
-        for episode in range(1000):
+        for episode in range(self.num_episodes):
             done = False
             num_action = 1
             state = start_state
@@ -250,9 +236,7 @@ class TD3(CDL):
                 
             rewards.append(reward)
             avg_reward = np.mean(rewards[-25:])
-            
-            print(f'Episode: {episode}\t Reward: {reward:.2f}\t Average Reward: {avg_reward:.2f}')
-            
+                        
             wandb.log({"reward": reward, "avg_reward": avg_reward})
             if episode % 100 == 0 and len(regions) > 0:
                 self._log_regions(problem_instance, episode, regions, reward)
@@ -266,9 +250,10 @@ class TD3(CDL):
             while not done: 
                 action = self._select_action(state, noise=0)
                 optim_coeffs.append(action)
-                reward, next_state, done, _ = self._step(problem_instance, action)
+                reward, next_state, done, regions = self._step(problem_instance, action)
                 state = next_state
         
-        print(f'Final reward: {reward}')
+        wandb.log({"Final Reward": reward})
+        self._log_regions(problem_instance, 'final', regions, reward)
         optim_coeffs = np.array(optim_coeffs).reshape(-1, self.action_dim)     
         return optim_coeffs  

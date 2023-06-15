@@ -30,7 +30,7 @@ class EA(CDL):
         lines = CDL.get_lines_from_coeffs(coeffs)
         valid_lines = CDL.get_valid_lines(lines)
         regions = CDL.create_regions(valid_lines)
-        scenario_cost = super()._optimizer(regions, problem_instance)
+        scenario_cost = super().optimizer(regions, problem_instance)
         return scenario_cost
         
     # Minimizes cost function to generate the optimal lines

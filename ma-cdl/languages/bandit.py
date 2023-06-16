@@ -11,19 +11,17 @@ class Bandit(CDL):
     def __init__(self, scenario, world):
         super().__init__(scenario, world)
         self.action_dim = 3
-        self.action_range = 1
         self.valid_lines = set()
         
         self._init_hyperparams()
         self._init_wandb()
         
-        self.reinforce = REINFORCE(1, self.action_dim, self.action_range)
+        self.reinforce = REINFORCE(1, self.action_dim)
         self.optimizer = Adam(self.reinforce.parameters(), lr=self.learning_rate)
     
     def _init_hyperparams(self):
         self.gamma = 0.99
         self.num_episodes = 1000
-        self.penalty_thresh = -20
         self.learning_rate = 0.01
         
     def _init_wandb(self):
@@ -39,28 +37,34 @@ class Bandit(CDL):
         wandb.log({"image": wandb.Image(pil_image)})
     
     # Select action according to context (timestep)
-    def _select_action(self, timestep):
-        return self.reinforce(timestep)
+    def _select_action(self, context):
+        context = np.array([context])
+        mean, log_std = self.reinforce(context)
+        std = torch.exp(log_std)
+        normal = torch.distributions.Normal(mean, std)
+        action = normal.sample()
+        return action.numpy()
     
-    # TODO: Figure out how to give immediate reward
+    # Bandit recieves a penalty after every timestep
     def _step(self, problem_instance, action, num_action):
         done = False
         prev_num_lines = max(len(self.valid_lines), 4)
 
-        line = CDL.get_lines_from_coeffs(action.detach().numpy())
+        line = CDL.get_lines_from_coeffs(action)
         valid_lines = CDL.get_valid_lines(line)
-        self.valid_lines.update(valid_lines)
+        self.valid_lines.update(valid_lines)        
         regions = CDL.create_regions(list(self.valid_lines))
-        penalty = -super().optimizer(regions, problem_instance)
+        penalty = -super().optimizer(regions, problem_instance) * 0.1
         
-        if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines or penalty > self.penalty_thresh:
+        if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines:
             done = True
+            penalty *= 10
             self.valid_lines.clear()
 
         return penalty, done, regions
     
-    # Discount rewards for each timestep
-    def discount_rewards(self, reward_list):
+    # Discount penalties for each timestep
+    def discount_penalties(self, reward_list):
         discounted_returns = []
         for i in range(len(reward_list)):
             remaining_rewards = reward_list[i:]
@@ -72,12 +76,16 @@ class Bandit(CDL):
         return G
     
     def _learn(self, context_list, action_list, reward_list):
+        context_list = np.array(context_list).reshape(-1, 1)
+        action_list = np.array(action_list).reshape(-1, self.action_dim)
+        reward_list = np.array(reward_list).reshape(-1, 1)
+        
         self.optimizer.zero_grad()
-        future_return = self.discount_rewards(reward_list)
+        future_return = self.discount_penalties(reward_list)
         G = torch.sum(future_return)
         mean, std_dev = self.reinforce(context_list)
-        normal_distribution = torch.distributions.Normal(mean, std_dev)
-        log_prob = normal_distribution.log_prob(action_list)
+        normal = torch.distributions.Normal(mean, std_dev)
+        log_prob = normal.log_prob(action_list)
         loss = torch.sum(-log_prob * G)
         loss.backward()
         self.optimizer.step()
@@ -90,26 +98,26 @@ class Bandit(CDL):
         for episode in range(self.num_episodes):
             timesteps = []
             actions = []
-            rewards = []
-            timestep = 0
+            penalties = []
+            timestep = 1
             done = False
             while not done:
                 action = self._select_action(timestep)
-                reward, done, regions = self._step(problem_instance, action, timestep)
+                penalty, done, regions = self._step(problem_instance, action, timestep)
                 timesteps.append(timestep)
                 actions.append(action)
-                rewards.append(reward)
+                penalties.append(penalty)
                 timestep += 1
             
-            self._learn(timesteps, actions, rewards)
+            self._learn(timesteps, actions, penalties)
             
             wandb.log({"returns": returns, "avg_returns": avg_returns})
             
-            returns.append(np.sum(rewards))
+            returns.append(np.sum(penalties))
             avg_returns.append(np.mean(returns[-100:]))
             
             if episode % 100 == 0 and len(regions) > 0:
-                self._log_regions(problem_instance, episode, regions, reward)
+                self._log_regions(problem_instance, episode, regions, penalty)
         
     def _generate_optimal_coeffs(self, problem_instance):
         self._train(problem_instance)
@@ -117,7 +125,7 @@ class Bandit(CDL):
         done = False
         optim_coeffs = []
         with torch.no_grad():
-            timestep = 0
+            timestep = 1
             while not done:
                 action = self._select_action(timestep)
                 reward, done, regions = self._step(problem_instance, action, timestep)

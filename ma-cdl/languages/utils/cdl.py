@@ -1,9 +1,11 @@
 import os
+import io
 import pickle
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 
+from PIL import Image
 from rtree import index
 from itertools import product
 from statistics import mean, variance
@@ -57,8 +59,23 @@ class CDL:
         with open(file_path, 'rb') as f:
             language = pickle.load(f)
         self.language = language
+        
+    # Create regions to be uploaded to Wand 
+    def _get_image(self, problem_instance, title_name, title_data, regions, reward):
+        _, ax = plt.subplots()
+        problem_instance = problem_instance.capitalize()
+        for idx, region in enumerate(regions):
+            ax.fill(*region.exterior.xy)
+            ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
+        ax.set_title(f'problem_instance: {problem_instance}   {title_name.capitalize()}: {title_data}   Reward: {reward:.2f}')
+
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        pil_image = Image.open(buffer)
+        return pil_image
     
-        # Visualize regions that define the language
+    # Visualize regions that define the language
     def _visualize(self, approach, problem_instance):
         for idx, region in enumerate(self.language):
             plt.fill(*region.exterior.xy)
@@ -128,7 +145,7 @@ class CDL:
         
         rand_idx = self.np_random.choice(len(self.world.agents))
         start = self.world.agents[rand_idx].state.p_pos
-        goal = self.world.agents[rand_idx].goal_a.state.p_pos
+        goal = self.world.agents[rand_idx].goal.state.p_pos
         obstacles = [obs.state.p_pos for obs in self.world.large_obstacles]
 
         return start, goal, obstacles
@@ -187,27 +204,26 @@ class CDL:
         4. Mean of nonnavigable area
         5. Variance of nonnavigable area
     """
-    def _optimizer(self, regions, problem_instance):            
-        i = 0
-        nonnavigable, unsafe = [], []
-        while i < self.configs_to_consider:
-            start, goal, obstacles = self._generate_configuration(problem_instance)
-            config_cost = self._config_cost(start, goal, obstacles, regions)
-            if config_cost:
-                nonnavigable.append(config_cost[0])
-                unsafe.append(config_cost[1])
-                i += 1
+    def optimizer(self, regions, problem_instance):  
+        instance_cost = 5e2
+        
+        if len(regions) > 1:
+            i = 0
+            nonnavigable, unsafe = [], []
+            while i < self.configs_to_consider:
+                start, goal, obstacles = self._generate_configuration(problem_instance)
+                config_cost = self._config_cost(start, goal, obstacles, regions)
+                if config_cost:
+                    nonnavigable.append(config_cost[0])
+                    unsafe.append(config_cost[1])
+                    i += 1
 
-        unsafe_mu = mean(unsafe)
-        unsafe_var = variance(unsafe)
-        efficiency = len(regions)
-        nonnavigable_mu = mean(nonnavigable)
-        nonnavigable_var = variance(nonnavigable)
-
-        # No regions were created
-        if nonnavigable_mu > 3.95:
-            instance_cost = 5e2
-        else:
+            unsafe_mu = mean(unsafe)
+            unsafe_var = variance(unsafe)
+            efficiency = len(regions)
+            nonnavigable_mu = mean(nonnavigable)
+            nonnavigable_var = variance(nonnavigable)
+            
             criterion = np.array([unsafe_mu, unsafe_var, efficiency, nonnavigable_mu, nonnavigable_var])
             instance_cost = np.sum(self.weights * criterion)
             

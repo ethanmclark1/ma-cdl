@@ -73,20 +73,20 @@ class Bandit(CDL):
             discounted_returns.append(G_t)
             
         G = torch.tensor(discounted_returns, dtype=torch.float32)
-        return G
-    
+        return G.unsqueeze(0).unsqueeze(2)
+        
     def _learn(self, context_list, action_list, reward_list):
         context_list = np.array(context_list).reshape(-1, 1)
-        action_list = np.array(action_list).reshape(-1, self.action_dim)
+        action_list = torch.FloatTensor(np.array(action_list).reshape(-1, self.action_dim))
         reward_list = np.array(reward_list).reshape(-1, 1)
-        
+
         self.optimizer.zero_grad()
         future_return = self.discount_penalties(reward_list)
-        G = torch.sum(future_return)
         mean, std_dev = self.reinforce(context_list)
         normal = torch.distributions.Normal(mean, std_dev)
         log_prob = normal.log_prob(action_list)
-        loss = torch.sum(-log_prob * G)
+        loss = -torch.mean(log_prob * future_return) - 0.01 * normal.entropy()
+        loss = loss.mean()
         loss.backward()
         self.optimizer.step()
 
@@ -111,11 +111,10 @@ class Bandit(CDL):
             
             self._learn(timesteps, actions, penalties)
             
-            wandb.log({"returns": returns, "avg_returns": avg_returns})
-            
             returns.append(np.sum(penalties))
             avg_returns.append(np.mean(returns[-100:]))
             
+            wandb.log({"returns": returns, "avg_returns": avg_returns})
             if episode % 100 == 0 and len(regions) > 0:
                 self._log_regions(problem_instance, episode, regions, penalty)
         

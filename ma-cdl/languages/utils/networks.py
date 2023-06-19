@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -63,8 +64,8 @@ class Actor(nn.Module):
     def forward(self, x):
         x = F.relu(self.l1(x))
         x = F.relu(self.l2(x))
-        x = self.max_action * torch.tanh(self.l3(x))
-        return x
+        coefficients = self.max_action * torch.tanh(self.l3(x))
+        return coefficients
     
     
 class Critic(nn.Module):
@@ -110,10 +111,14 @@ class REINFORCE(nn.Module):
         self.l1 = nn.Linear(state_dim, 8)
         self.l2 = nn.Linear(8, 16)
         self.l3 = nn.Linear(16, action_dim)
-        
+        self.l4 = nn.Linear(16, action_dim)
+                
     def forward(self, context):
-        context = torch.FloatTensor([context])
+        context = torch.FloatTensor(context)
         x = F.relu(self.l1(context))
         x = F.relu(self.l2(x))
-        x = F.relu(self.l3(x))
-        return x
+        mean = torch.tanh(self.l3(x))
+        log_std = self.l4(x)
+        log_std = torch.clamp(log_std, min=np.log(1e-3), max=1)
+        std_dev = torch.exp(log_std)
+        return mean, std_dev

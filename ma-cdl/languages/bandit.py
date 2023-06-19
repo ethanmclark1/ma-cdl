@@ -39,9 +39,8 @@ class Bandit(CDL):
     # Select action according to context (timestep)
     def _select_action(self, context):
         context = np.array([context])
-        mean, log_std = self.reinforce(context)
-        std = torch.exp(log_std)
-        normal = torch.distributions.Normal(mean, std)
+        mean, std_dev = self.reinforce(context)
+        normal = torch.distributions.Normal(mean, std_dev)
         action = normal.sample()
         return action.numpy()
     

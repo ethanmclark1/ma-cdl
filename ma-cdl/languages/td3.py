@@ -56,7 +56,6 @@ class TD3(CDL):
         self.batch_size = 64
         self.num_dummy = 150000
         self.noise_clip = 0.025
-        self.penalty_thresh = -30
         self.num_episodes = 1000
         self.policy_noise = 0.005
         self.num_iterations = 100
@@ -82,7 +81,7 @@ class TD3(CDL):
             
     # Overlay lines in the environment
     def _step(self, problem_instance, action, num_action):
-        reward = 0
+        penalty = 0
         done = False
         next_state = []
         prev_num_lines = max(len(self.valid_lines), 4)
@@ -91,59 +90,55 @@ class TD3(CDL):
         valid_lines = CDL.get_valid_lines(line)
         self.valid_lines.update(valid_lines)
         regions = CDL.create_regions(list(self.valid_lines))
-        _reward = -super().optimizer(regions, problem_instance)
         
-        if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines or _reward > self.penalty_thresh:
+        if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines:
             done = True
-            reward = _reward
+            penalty = -super().optimizer(regions, problem_instance)
             self.valid_lines.clear()
             
         next_state = self.autoencoder.get_state(regions)
-        return reward, next_state, done, regions
+        return penalty, next_state, done, regions
     
-    # Sample permutations of steps to force order invariance and reduce sequential correlation
-    # TODO: Need to adjust state and next_state accordingly
-    def _sample_permutations(self):
-        num_permutations = 5
-        if len(self.actions) <= num_permutations:
-            shuffled_actions = [np.array(p) for p in itertools.permutations(self.actions)]
-        else:
-            shuffled_actions = [self.rng.permutation(self.actions) for _ in range(num_permutations)]
-        return shuffled_actions
-    
-    # Shuffle actions to force order invariance
+    # Add transition to replay buffer
     def _remember(self, state, action, reward, next_state, done):
+        self.replay_buffer.add(state, action, reward, next_state, done)
+        
         self.states.append(state)
         self.actions.append(action)
         self.rewards.append(reward)
         self.next_states.append(next_state)
         self.dones.append(done)
         
-        if done:
-            shuffled_actions = self._sample_permutations()
-            default_boundary_lines = set(CDL.get_valid_lines([]))
+        if done:            
+            default_boundary_lines = CDL.get_valid_lines([])  
+            default_square = CDL.create_regions(default_boundary_lines)
+            start_state = self.autoencoder.get_state(default_square)
+            
+            # Hallicinate transitions according to shuffled actions
+            shuffled_actions = list(itertools.permutations(self.actions))
             for shuffled_action in shuffled_actions:
-                _state = self.states[0]
-                self.valid_lines = copy.deepcopy(default_boundary_lines)
-                for action_idx, _action in enumerate(shuffled_action):
-                    lines = CDL.get_lines_from_coeffs(_action)
-                    valid_lines = CDL.get_valid_lines(lines)
-                    self.valid_lines.update(valid_lines)
+                state = start_state
+                self.valid_lines.clear()
+                self.valid_lines.update(default_boundary_lines)
+                
+                for idx, action in enumerate(shuffled_action):
+                    line = CDL.get_lines_from_coeffs(action)
+                    self.valid_lines.update(CDL.get_valid_lines(line))
                     regions = CDL.create_regions(list(self.valid_lines))
-                    _next_state = self.autoencoder.get_state(regions)
-                    _reward = self.rewards[action_idx]
-                    _done = True if action_idx == len(shuffled_action) - 1 else False
-                             
-                    self.replay_buffer.add(_state, _action, _reward, _next_state, _done)
-                    _state = _next_state
+                    next_state = self.autoencoder.get_state(regions)
+                    reward = self.rewards[idx]
+                    done = True if idx == len(shuffled_action) - 1 else False
+                    
+                    self.replay_buffer.add(state, action, reward, next_state, done)
+                    state = next_state
             
             self.states = []
             self.actions = []
             self.rewards = []
             self.next_states = []
             self.dones = []
-            self.valid_lines = copy.deepcopy(default_boundary_lines)
-    
+            self.valid_lines.clear()
+            
     # Populate replay buffer with dummy transitions
     def _populate_buffer(self, problem_instance, start_state):
         num_action = 1
@@ -159,7 +154,7 @@ class TD3(CDL):
             else:
                 state = next_state
                 num_action += 1
-                    
+                                    
     # Select an action (coefficients of a linear line)
     def _select_action(self, state, noise=0.05):
         state = torch.FloatTensor(state)
@@ -179,7 +174,6 @@ class TD3(CDL):
             next_states = torch.FloatTensor(next_states)
             dones = torch.FloatTensor(dones).unsqueeze(-1)
             
-            # Select actions according to policy and add clipped noise
             noise = actions.data.normal_(0, self.policy_noise)
             noise = noise.clamp(-self.noise_clip, self.noise_clip)
             next_actions = (self.actor_target(next_states) + noise).clamp(-self.action_range, self.action_range)
@@ -188,13 +182,10 @@ class TD3(CDL):
             target_Q = torch.max(target_Q1, target_Q2)
             target_Q = rewards + (dones * self.gamma * target_Q).detach()
             
-            # Current Q estimates
             current_Q1, current_Q2 = self.critic(states, actions)
             
-            # Critic loss 
             critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
             
-            # Optimize the critic
             self.critic_optimizer.zero_grad()
             critic_loss.backward()
             self.critic_optimizer.step()

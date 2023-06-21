@@ -21,7 +21,7 @@ class Bandit(CDL):
     
     def _init_hyperparams(self):
         self.gamma = 0.99
-        self.num_episodes = 1000
+        self.num_episodes = 2500
         self.learning_rate = 0.01
         
     def _init_wandb(self):
@@ -53,11 +53,11 @@ class Bandit(CDL):
         valid_lines = CDL.get_valid_lines(line)
         self.valid_lines.update(valid_lines)        
         regions = CDL.create_regions(list(self.valid_lines))
-        penalty = -super().optimizer(regions, problem_instance) * 0.1
+        penalty = -super().optimizer(regions, problem_instance) * 0.01
         
         if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines:
             done = True
-            penalty *= 10
+            penalty *= 100
             self.valid_lines.clear()
 
         return penalty, done, regions
@@ -114,7 +114,7 @@ class Bandit(CDL):
             avg_returns.append(np.mean(returns[-100:]))
             
             wandb.log({"returns": returns, "avg_returns": avg_returns})
-            if episode % 100 == 0 and len(regions) > 0:
+            if episode % 100 == 0 and len(regions) > 1:
                 self._log_regions(problem_instance, episode, regions, penalty)
         
     def _generate_optimal_coeffs(self, problem_instance):

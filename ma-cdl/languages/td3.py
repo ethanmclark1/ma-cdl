@@ -33,7 +33,6 @@ class TD3(CDL):
         self.valid_lines = set()
     
         self.action_dim = 3
-        self.action_range = 1
         self.state_dims = 128
         
         self._init_hyperparams()
@@ -42,7 +41,7 @@ class TD3(CDL):
         self.replay_buffer = ReplayBuffer()
         self.autoencoder = AE(self.state_dims, self.rng, self.max_lines)
         
-        self.actor = Actor(self.state_dims, self.action_dim, self.action_range)
+        self.actor = Actor(self.state_dims, self.action_dim)
         self.actor_target = copy.deepcopy(self.actor)
         self.actor_optimizer = Adam(self.actor.parameters())
         
@@ -114,7 +113,7 @@ class TD3(CDL):
             default_square = CDL.create_regions(default_boundary_lines)
             start_state = self.autoencoder.get_state(default_square)
             
-            # Hallicinate transitions according to shuffled actions
+            # Hallucinate transitions according to shuffled actions
             shuffled_actions = list(itertools.permutations(self.actions))
             for shuffled_action in shuffled_actions:
                 state = start_state
@@ -144,7 +143,7 @@ class TD3(CDL):
         num_action = 1
         state = start_state
         while len(self.replay_buffer) < self.num_dummy:
-            action = self.rng.uniform(-self.action_range, self.action_range, size=self.action_dim)
+            action = self.rng.uniform(-1, 1, size=self.action_dim)
             reward, next_state, done, _ = self._step(problem_instance, action, num_action)
             self._remember(state, action, reward, next_state, done)
             
@@ -160,7 +159,7 @@ class TD3(CDL):
         state = torch.FloatTensor(state)
         action = self.actor(state).data.numpy().flatten()
         if noise != 0:
-            action = (action + self.rng.uniform(0, noise, size=self.action_dim)).clip(-self.action_range, self.action_range)
+            action = (action + self.rng.uniform(0, noise, size=self.action_dim)).clip(-1, 1)
             
         return action
     
@@ -229,7 +228,7 @@ class TD3(CDL):
             avg_reward = np.mean(rewards[-25:])
                         
             wandb.log({"reward": reward, "avg_reward": avg_reward})
-            if episode % 100 == 0 and len(regions) > 0:
+            if episode % 100 == 0 and len(regions) > 1:
                 self._log_regions(problem_instance, episode, regions, reward)
     
     def _generate_optimal_coeffs(self, problem_instance):

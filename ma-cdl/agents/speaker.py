@@ -11,9 +11,7 @@ class Speaker:
     
     # Determine the positions of the agents, goals, and obstacles
     def gather_info(self, state):
-        obstacle_positions = state[self.num_agents*2 : -self.num_agents*2].reshape(-1, 2)
-        self.obstacles = [Point(obstacle_position).buffer(self.obstacle_radius) 
-                          for obstacle_position in obstacle_positions]
+        self.obstacles = state[self.num_agents*2 : -self.num_agents*2].reshape(-1, 2)
         
         for idx in range(self.num_agents):
             self.agents += [state[idx*2 : idx*2+2]]
@@ -31,13 +29,17 @@ class Speaker:
     def direct_with_cdl(self, language):
         directions = []
         
+        obstacles = [Point(obstacle).buffer(self.obstacle_radius) 
+                     for obstacle in self.obstacles]
+        
         for agent, goal in zip(self.agents, self.goals):
             agent_idx = self.localize(Point(agent), language)
             goal_idx = self.localize(Point(goal), language)
-            directions += [a_star(agent_idx, goal_idx, self.obstacles, language)]
+            directions += [a_star(agent_idx, goal_idx, obstacles, language)]
                     
         return directions
     
+    # Provide directions for each agent to get to their respective goal using baseline
     def direct_with_baseline(self, baseline):
         directions = []
         for agent, goal in zip(self.agents, self.goals):

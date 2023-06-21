@@ -23,10 +23,9 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 class CDL:
     def __init__(self, scenario, world):
-        self.min_lines = 4
+        self.min_lines = 2
         self.max_lines = 6
         self.world = world
-        self.language = None
         self.scenario = scenario
         self.configs_to_consider = 30
         self.np_random = np.random.default_rng()
@@ -42,23 +41,23 @@ class CDL:
             self.obstacle_radius
             )
     
-    def _save(self, approach, problem_instance):
-        directory = f'ma-cdl/languages/history/{approach}'
+    def _save(self, approach, problem_instance, language):
+        directory = f'ma-cdl/languages/history/{approach.lower()}'
         filename = f'{problem_instance}.pkl'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
 
         with open(file_path, 'wb') as file:
-            pickle.dump(self.language, file)
+            pickle.dump(language, file)
     
     def _load(self, approach, problem_instance):
-        directory = f'ma-cdl/languages/history/{approach}'
+        directory = f'ma-cdl/languages/history/{approach.lower()}'
         filename = f'{problem_instance}.pkl'
         file_path = os.path.join(directory, filename)
         with open(file_path, 'rb') as f:
             language = pickle.load(f)
-        self.language = language
+        return language
         
     # Create regions to be uploaded to Wand 
     def _get_image(self, problem_instance, title_name, title_data, regions, reward):
@@ -73,16 +72,17 @@ class CDL:
         plt.savefig(buffer, format='png')
         buffer.seek(0)
         pil_image = Image.open(buffer)
+        plt.close()
         return pil_image
     
     # Visualize regions that define the language
-    def _visualize(self, approach, problem_instance):
-        for idx, region in enumerate(self.language):
+    def _visualize(self, approach, problem_instance, language):
+        for idx, region in enumerate(language):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
 
-        directory = 'ma-cdl/language/history'
-        filename = f'{approach}-{problem_instance}.png'
+        directory = f'ma-cdl/languages/history/{approach.lower()}'
+        filename = f'{problem_instance}.png'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -205,7 +205,7 @@ class CDL:
         5. Variance of nonnavigable area
     """
     def optimizer(self, regions, problem_instance):  
-        instance_cost = 5e2
+        instance_cost = 2e2
         
         if len(regions) > 1:
             i = 0
@@ -236,14 +236,15 @@ class CDL:
     def get_language(self, problem_instance):
         approach = self.__class__.__name__
         try:
-            self._load(approach, problem_instance)
+            language = self._load(approach, problem_instance)
         except FileNotFoundError:
             print(f'No stored {approach} language for {problem_instance} problem instance.')
             print('Generating new language...')
             coeffs = self._generate_optimal_coeffs(problem_instance)
             lines = CDL.get_lines_from_coeffs(coeffs)
             valid_lines = CDL.get_valid_lines(lines)
-            self.language = CDL.create_regions(valid_lines)
-            self._save(approach, problem_instance)
+            language = CDL.create_regions(valid_lines)
+            self._save(approach, problem_instance, language)
         
-        self._visualize(approach, problem_instance)
+        self._visualize(approach, problem_instance, language)
+        return language

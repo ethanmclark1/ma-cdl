@@ -1,4 +1,3 @@
-import time
 import wandb
 import numpy as np
 
@@ -40,8 +39,7 @@ class EA(CDL):
         for num in range(self.min_lines, self.max_lines + 1):
             bounds = [(lb, ub) for _ in range(3*num)]
             res = optimize.differential_evolution(self._optimizer, bounds, args=(problem_instance,),
-                                                  maxiter=100*num, init='sobol')
-            
+                                                  tol=0.5, maxiter=100*num, init='halton')
             wandb.log({'cost': res.fun, 'num_lines': num})
             self._log_regions(problem_instance, num, res.x, res.fun)
 

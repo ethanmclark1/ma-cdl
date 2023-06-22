@@ -8,6 +8,7 @@ class DirectPath:
             obstacle_radius
             )
     
+    # Determine path using RRT*
     def direct(self, start, goal, obstacles):
         direct_path = self.planner.get_path(start, goal, obstacles)
         return direct_path

@@ -175,7 +175,7 @@ class TD3(CDL):
             
             noise = actions.data.normal_(0, self.policy_noise)
             noise = noise.clamp(-self.noise_clip, self.noise_clip)
-            next_actions = (self.actor_target(next_states) + noise).clamp(-self.action_range, self.action_range)
+            next_actions = (self.actor_target(next_states) + noise).clamp(-1, 1)
             
             target_Q1, target_Q2 = self.critic_target(next_states, next_actions)
             target_Q = torch.max(target_Q1, target_Q2)

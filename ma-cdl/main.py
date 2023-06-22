@@ -1,3 +1,4 @@
+import copy
 import Signal8
 import numpy as np
 import matplotlib.pyplot as plt
@@ -31,34 +32,35 @@ class MA_CDL():
         goal_radius = world.goals[0].size
         obs_radius = world.small_obstacles[0].size
         
-        # Approaches
+        # Context-Dependent Languages
         self.ea = EA(scenario, world)
         self.td3 = TD3(scenario, world)
         self.bandit = Bandit(scenario, world) 
         
         # Baselines
-        self.grid_world = GridWorld()
-        self.voronoi_map = VoronoiMap()
-        self.direct_search = DirectPath()
-        
-        self.speaker = Speaker(num_agents)
+        self.grid_world = GridWorld(agent_radius, goal_radius, obs_radius)
+        self.voronoi_map = VoronoiMap(agent_radius, goal_radius, obs_radius)
+        self.direct_path = DirectPath(agent_radius, goal_radius, obs_radius)
+                
+        self.speaker = Speaker(num_agents, obs_radius)
         self.listener = [Listener(agent_radius, goal_radius, obs_radius) for _ in range(num_agents)]
     
-    # TODO: Integrate baselines
     def retrieve_languages(self, problem_instance):
-        # approaches = ['ea', 'td3', 'bandit']
-        approaches = ['ea']
-        language_set = {approach: None for approach in approaches}   
+        # approaches = ['ea', 'td3', 'bandit', 'grid_world', 'voronoi_map', 'direct_path']
+        approaches = ['direct_path']
+        language_set = {approach: None for approach in approaches} 
         
-        for approach in approaches:
-            language_set[approach] = getattr(self, approach).get_language(problem_instance)
-        
+        for idx in range(len(approaches)):
+            approach = getattr(self, approaches[idx])
+            if hasattr(approach, 'get_language'):
+                language_set[approach] = getattr(self, approach).get_language(problem_instance)
+             
         return language_set
 
     def act(self, problem_instance, language_set):
-        ea = language_set['ea']
-        td3 = language_set['td3']
-        bandit = language_set['bandit']
+        # ea = language_set['ea']
+        # td3 = language_set['td3']
+        # bandit = language_set['bandit']
         approaches = list(language_set.keys())
     
         results = {approach: 0 for approach in approaches}
@@ -68,18 +70,28 @@ class MA_CDL():
         for _ in range(10):            
             self.env.reset(options={'problem_instance': problem_instance})
             start_state = self.env.state()
-            direction_set['ea'] = self.speaker.direct(start_state, ea)
-            direction_set['td3'] = self.speaker.direct(start_state, td3)
-            direction_set['bandit'] = self.speaker.direct(start_state, bandit)
+            self.speaker.gather_info(start_state)
             
-            # TODO: Implement functionality for multiple ground agents
-            for approach in direction_set.keys():   
+            # Create copy of world to reset to for each approach
+            world = self.env.unwrapped.world
+            backup = copy.deepcopy(world)
+            
+            # direction_set['ea'] = self.speaker.direct(ea)
+            # direction_set['td3'] = self.speaker.direct(td3)
+            # direction_set['bandit'] = self.speaker.direct(bandit)
+            # direction_set['grid_world'] = self.speaker.direct(self.grid_world)
+            direction_set['voronoi_map'] = self.speaker.direct(self.voronoi_map)
+            direction_set['direct_path'] = self.speaker.direct(self.direct_path)
+            
+            for approach in direction_set.keys():  
+                i = 0 
                 directions = direction_set[approach]
-                direction_len[approach].append(len(directions))
+                max_directions = max(len(direction) for direction in directions)
+                direction_len[approach].append(max_directions)
                 observation, _, termination, truncation, _ = self.env.last()
-
+                
                 while not (termination or truncation):
-                    action = self.listener[i].get_action(observation, directions)
+                    action = self.listener[i].get_action(observation, directions[i])
                     self.env.step(action)
                     observation, _, termination, truncation, _ = self.env.last()
                                 
@@ -92,61 +104,67 @@ class MA_CDL():
                         break   
                     
                     i += 1
-                    i = i % len(directions)
+                    i %= len(directions)
+                    
+                self.env.unwrapped.world = copy.deepcopy(backup)
                             
         self.env.close()
         avg_direction_len = {approach: {instance: np.mean(values) for instance, values in scenario_dict.items()} 
                          for approach, scenario_dict in direction_len.items()}
         return results, avg_direction_len
     
-    def plot(self, results, avg_direction_len):        
-        # Create the first figure for success rates
+    def plot(self, problem_instance, results, avg_direction_len):        
         fig1, axes1 = plt.subplots(1, 2, figsize=(15, 6))
-        fig1.suptitle('Success Rate Comparison between Context-Dependent Language, Voronoi Maps, and Grid World on Suite of Problem Scenarios')
+        fig1.suptitle(f'Success Rate Comparison between Context-Dependent Languages, Voronoi Map, Grid World, and Direct Path on {problem_instance.capitalize()} Problem Instance')
         
-        # Create the second figure for average direction lengths
+        num_approaches = len(results.keys())        
+            
+        ea_results = list(results['ea'].values())
+        td3_results = list(results['td3'].values())
+        bandit_results = list(results['bandit'].values())
+        grid_world_results = list(results['grid_world'].values())
+        voronoi_map_results = list(results['voronoi_map'].values())
+        direct_path_results = list(results['direct_path'].values())
+
+        # Plot the success rate graphs
+        axes1.bar(np.arange(len(num_approaches)) - 0.6, ea_results, width=0.2, label='Evolutionary Algorithm')
+        axes1.bar(np.arange(len(num_approaches)) - 0.4, td3_results, width=0.2, label='TD3')
+        axes1.bar(np.arange(len(num_approaches)) - 0.2, bandit_results, width=0.2, label='Bandit')
+        axes1.bar(np.arange(len(num_approaches)) + 0.2, grid_world_results, width=0.2, label='Grid World')
+        axes1.bar(np.arange(len(num_approaches)) + 0.4, voronoi_map_results, width=0.2, label='Voronoi Maps')
+        axes1.bar(np.arange(len(num_approaches)) + 0.6, direct_path_results, width=0.2, label='Direct Path')
+        axes1.set_xlabel('Problem Type')
+        axes1.set_ylabel('Success Rate (%)')
+        axes1.set_xticks(np.arange(len(num_approaches)))
+        axes1.set_xticklabels(num_approaches)
+        axes1.set_ylim(0, 100)
+        axes1.legend()
+        
         fig2, axes2 = plt.subplots(1, 2, figsize=(15, 6))
-        fig2.suptitle('Average Direction Length Comparison between Context-Dependent Language, Voronoi Maps, and Grid World on Suite of Problem Scenarios')
+        fig2.suptitle(f'Average Direction Length Comparison between Context-Dependent Languages, Voronoi Map, Grid World, and Direct Path on {problem_instance.capitalize()} Problem Instance')
         
-        num_iterations = len(axes1)
-        num_labels = len(self.problem_instances)
-        group_size = num_labels // num_iterations
-        for i in range(num_iterations):
-            start = i * group_size
-            end = start + group_size if i < num_iterations - 1 else num_labels
-            _labels = self.problem_instances[start:end]
-            
-            _cdl_results = list(results['language'].values())[start:end]
-            _grid_world_results = list(results['grid_world'].values())[start:end]
-            _voronoi_map_results = list(results['voronoi_map'].values())[start:end]
-
-            # Plot the success rate graphs
-            axes1[i].bar(np.arange(len(_labels)) - 0.2, _cdl_results, width=0.2, label='Context-Dependent Language')
-            axes1[i].bar(np.arange(len(_labels)), _grid_world_results, width=0.2, label='Grid World')
-            axes1[i].bar(np.arange(len(_labels)) + 0.2, _voronoi_map_results, width=0.2, label='Voronoi Maps')
-            axes1[i].set_xlabel('Problem Type')
-            axes1[i].set_ylabel('Success Rate (%)')
-            axes1[i].set_xticks(np.arange(len(_labels)))
-            axes1[i].set_xticklabels(_labels)
-            axes1[i].set_ylim(0, 100)
-            axes1[i].legend()
-
-            _cdl_direction_len = list(avg_direction_len['language'].values())[start:end]
-            _grid_world_direction_len = list(avg_direction_len['grid_world'].values())[start:end]
-            _voronoi_map_direction_len = list(avg_direction_len['voronoi_map'].values())[start:end]
-            
-            # Plot the average direction length graphs
-            axes2[i].bar(np.arange(len(_labels)) - 0.2, _cdl_direction_len, width=0.2, label='Context-Dependent Language')
-            axes2[i].bar(np.arange(len(_labels)), _grid_world_direction_len, width=0.2, label='Grid World')
-            axes2[i].bar(np.arange(len(_labels)) + 0.2, _voronoi_map_direction_len, width=0.2, label='Voronoi Maps')
-            axes2[i].set_xlabel('Problem Type')
-            axes2[i].set_ylabel('Average Direction Length')
-            axes2[i].set_xticks(np.arange(len(_labels)))
-            axes2[i].set_xticklabels(_labels)
-            axes2[i].legend()
+        ea_direction_len = list(avg_direction_len['ea'].values())
+        td3_direction_len = list(avg_direction_len['td3'].values())
+        bandit_direction_len = list(avg_direction_len['bandit'].values())
+        grid_world_direction_len = list(avg_direction_len['grid_world'].values())
+        voronoi_map_direction_len = list(avg_direction_len['voronoi_map'].values())
+        direct_path_direction_len = list(avg_direction_len['direct_path'].values())
         
-        fig1.savefig('success_rates.png')
-        fig2.savefig('average_direction_lengths.png')        
+        # Plot the average direction length graphs
+        axes2.bar(np.arange(len(num_approaches)) - 0.6, ea_direction_len, width=0.2, label='Evolutionary Algorithm')
+        axes2.bar(np.arange(len(num_approaches)) - 0.4, td3_direction_len, width=0.2, label='TD3')
+        axes2.bar(np.arange(len(num_approaches)) - 0.2, bandit_direction_len, width=0.2, label='Bandit')
+        axes2.bar(np.arange(len(num_approaches)) + 0.2, grid_world_direction_len, width=0.2, label='Grid World')
+        axes2.bar(np.arange(len(num_approaches)) + 0.4, voronoi_map_direction_len, width=0.2, label='Voronoi Maps')
+        axes2.bar(np.arange(len(num_approaches)) + 0.6, direct_path_direction_len, width=0.2, label='Direct Path')
+        axes2.set_xlabel('Problem Type')
+        axes2.set_ylabel('Average Direction Length')
+        axes2.set_xticks(np.arange(len(num_approaches)))
+        axes2.set_xticklabels(num_approaches)
+        axes2.legend()
+        
+        fig1.savefig(f'results/{problem_instance}/success_rates.png')
+        fig2.savefig(f'results/{problem_instance}/average_direction_lengths.png')        
         plt.show()
         
 
@@ -159,10 +177,9 @@ if __name__ == '__main__':
         num_small_obstacles, 
         render_mode
         )
-    
+        
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
-    
     for problem_instance in problem_instances:
         language_set = ma_cdl.retrieve_languages(problem_instance)
-        # results, avg_direction_len = ma_cdl.act(language_set)
-        # ma_cdl.plot(results, avg_direction_len)
+        results, avg_direction_len = ma_cdl.act(problem_instance, language_set)
+        ma_cdl.plot(problem_instance, results, avg_direction_len)

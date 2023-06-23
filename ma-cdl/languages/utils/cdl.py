@@ -77,6 +77,9 @@ class CDL:
     
     # Visualize regions that define the language
     def _visualize(self, approach, problem_instance, language):
+        plt.clf()
+        plt.cla()
+        
         for idx, region in enumerate(language):
             plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')

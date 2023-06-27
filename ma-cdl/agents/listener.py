@@ -1,47 +1,41 @@
-import numpy as np
-from agents.utils.base_agent import BaseAgent
 from agents.utils.potential_field import PathPlanner
 
-class Listener(BaseAgent):
-    def __init__(self, agent_radius, goal_radius, obstacle_radius):
-        super().__init__(agent_radius, goal_radius, obstacle_radius)
-        self.language = None
-        self.planner = PathPlanner(agent_radius, goal_radius, obstacle_radius)
-        
-    # Convert discrete state to continous state for GridWorld
-    def dequantize_state(self, discretized_state):
-        continuous_state = []
-        
-        for i, val in enumerate(discretized_state):
-            bin_width = (self.state_ranges[i][1] - self.state_ranges[i][0]) / self.n_bins[i]
-            continuous_val = self.state_ranges[i][0] + (val + 0.5) * bin_width
-            continuous_state.append(continuous_val)
-        return tuple(continuous_state)
-                
-    """
-    1. Gather position and velocity of agent
-    2. Determine where agent is in the environment
-    3. Determine where agent needs to go to
-    4. Path Plan from current position to desired position, generating only one action
-    """
+from languages.utils.cdl import CDL
+from languages.baselines.grid_world import GridWorld
+from languages.baselines.voronoi_map import VoronoiMap
+from languages.baselines.direct_path import DirectPath
+
+class Listener:
+    def __init__(self, agent_radius, goal_radius, obstacle_radius, max_observable_dist):
+        self.languages = ['EA', 'TD3', 'Bandit']
+        self.planner = PathPlanner(agent_radius, goal_radius, obstacle_radius, max_observable_dist)
+           
     def get_action(self, observation, directions, approach):
         agent_pos = observation[:2]
-        agent_vel = observation[2:4]        
         obs_pos = observation[4:-2].reshape(-1, 2)
         goal_pos = observation[-2:]
         
-        if approach in self.languages:
-            obs_region = self.localize(agent_pos)
-            goal_region = self.localize(goal_pos)
+        if approach[0] in self.languages:
+            agent_region = CDL.localize(agent_pos, approach[1])
+        elif approach[0] == 'grid_world':            
+            agent_region = GridWorld.discretize(agent_pos)
+        elif approach[0] == 'voronoi_map':
+            agent_region = VoronoiMap.voronize(agent_pos)
         
-        if obs_region == goal_region:
-            next_region = goal_region
-            target = goal
-        else:
-            label = directions[directions.index(obs_region)+1:][0]
-            next_region = self.language[label]
-            target = next_region.centroid
-        
-        action = 0
-        
+        try:
+            target_region = directions[directions.index(agent_region) + 1]
+            if approach[0] in self.languages:
+                target_pos = target_region.centroid
+            elif approach[0] == 'grid_world':
+                target_pos = GridWorld.dequantize(target_region)
+            elif approach[0] == 'voronoi_map':
+                target_pos = VoronoiMap.get_centroid(target_region)
+        except UnboundLocalError:
+            agent_idx = DirectPath.get_point_index(agent_pos)
+            agent_pos = directions[agent_idx]
+            target_pos = directions[agent_idx + 1]
+        except ValueError:
+            target_pos = goal_pos
+            
+        action = self.planner.get_action(agent_pos, target_pos, obs_pos)
         return action

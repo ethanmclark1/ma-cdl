@@ -1,14 +1,15 @@
 from shapely import Point
 from agents.utils.a_star import a_star
-from agents.utils.base_agent import BaseAgent
+from languages.utils.cdl import CDL
 
-class Speaker(BaseAgent):
-    def __init__(self, num_agents, agent_radius, obstacle_radius, goal_radius):
-        super().__init__(agent_radius, goal_radius, obstacle_radius)
+class Speaker:
+    def __init__(self, num_agents, obstacle_radius):
         self.agents = []
         self.goals = []
         self.obstacles = None
         self.num_agents = num_agents
+        self.obstacle_radius = obstacle_radius
+        self.languages = ['EA', 'TD3', 'Bandit']
     
     # Determine the positions of the agents, goals, and obstacles
     def gather_info(self, state):
@@ -27,8 +28,8 @@ class Speaker(BaseAgent):
                          for obstacle in self.obstacles]
             
             for agent, goal in zip(self.agents, self.goals):
-                agent_idx = self.localize(Point(agent), approach)
-                goal_idx = self.localize(Point(goal), approach)
+                agent_idx = CDL.localize(Point(agent), approach)
+                goal_idx = CDL.localize(Point(goal), approach)
                 directions += [a_star(agent_idx, goal_idx, obstacles, approach)]
         else:
             for agent, goal in zip(self.agents, self.goals):

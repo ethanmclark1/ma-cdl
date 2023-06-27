@@ -251,3 +251,12 @@ class CDL:
         
         self._visualize(approach, problem_instance, language)
         return language
+    
+    # Find the region that contains the entity
+    @staticmethod
+    def localize(entity, language):
+        try:
+            region_idx = list(map(lambda region: region.contains(entity), language)).index(True)
+        except:
+            region_idx = None
+        return region_idx   

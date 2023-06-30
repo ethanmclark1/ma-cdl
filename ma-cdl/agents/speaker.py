@@ -1,6 +1,8 @@
+import networkx as nx
+
 from shapely import Point
-from agents.utils.a_star import a_star
 from languages.utils.cdl import CDL
+from agents.utils.a_star import a_star
 
 class Speaker:
     def __init__(self, num_agents, obstacle_radius):
@@ -19,20 +21,35 @@ class Speaker:
             
         self.obstacles = state[self.num_agents*4 : ].reshape(-1, 2)
     
+    # Get the directions for each agent
     def direct(self, approach):
-        directions = []
-        class_name = approach.__class__.__name__
-        
-        if class_name in self.languages:
-            obstacles = [Point(obstacle).buffer(self.obstacle_radius) 
-                         for obstacle in self.obstacles]
-            
-            for agent, goal in zip(self.agents, self.goals):
-                agent_idx = CDL.localize(Point(agent), approach)
-                goal_idx = CDL.localize(Point(goal), approach)
-                directions += [a_star(agent_idx, goal_idx, obstacles, approach)]
+        if isinstance(approach, list):
+            directions = self.direct_with_cdl(approach)
         else:
-            for agent, goal in zip(self.agents, self.goals):
-                directions += [approach.direct(agent, goal, self.obstacles)]
+            directions = self.direct_with_baseline(approach)
+        
+        return directions
+            
+    def direct_with_cdl(self, approach):
+        directions = []
+        
+        obstacles = [Point(obstacle).buffer(self.obstacle_radius) 
+                     for obstacle in self.obstacles]
+    
+        for agent, goal in zip(self.agents, self.goals):
+            agent_idx = CDL.localize(agent, approach)
+            goal_idx = CDL.localize(goal, approach)
+            
+            try:
+                directions += [a_star(agent_idx, goal_idx, obstacles, approach)]
+            except TypeError:
+                graph = CDL.create_graph(approach)
+                directions += [nx.shortest_path(graph, agent_idx, goal_idx)]
+        
+    def direct_with_baseline(self, approach):
+        directions = []
+        
+        for agent, goal in zip(self.agents, self.goals):
+            directions += [approach.direct(agent, goal, self.obstacles)]
             
         return directions

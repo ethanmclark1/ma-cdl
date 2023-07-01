@@ -3,6 +3,7 @@ import io
 import pickle
 import warnings
 import numpy as np
+import networkx as nx
 import matplotlib.pyplot as plt
 
 from PIL import Image
@@ -29,8 +30,8 @@ class CDL:
         self.scenario = scenario
         self.configs_to_consider = 30
         self.np_random = np.random.default_rng()
-        self.weights = np.array([3, 2, 1.75, 3, 2])
-        
+        self.weights = np.array([3, 2, 1.5, 3, 2])
+            
         self.agent_radius = world.agents[0].size
         self.goal_radius = world.goals[0].size
         self.obstacle_radius = world.large_obstacles[0].size
@@ -59,13 +60,15 @@ class CDL:
             language = pickle.load(f)
         return language
         
-    # Create regions to be uploaded to Wand 
+    # Create regions and obstacles to be uploaded to Wand 
     def _get_image(self, problem_instance, title_name, title_data, regions, reward):
         _, ax = plt.subplots()
         problem_instance = problem_instance.capitalize()
+
         for idx, region in enumerate(regions):
             ax.fill(*region.exterior.xy)
             ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
+
         ax.set_title(f'problem_instance: {problem_instance}   {title_name.capitalize()}: {title_data}   Reward: {reward:.2f}')
 
         buffer = io.BytesIO()
@@ -141,6 +144,35 @@ class CDL:
         polygons = boundary.difference(lines)
         regions = [polygons] if polygons.geom_type == 'Polygon' else list(polygons.geoms)
         return regions 
+    
+    # Create graph for path planning using networkx
+    @staticmethod
+    def create_graph(language):
+        graph = nx.Graph()
+        
+        for idx, region in enumerate(language):
+            centroid = region.centroid
+            graph.add_node(idx, position=(centroid.x, centroid.y))
+
+        for idx, region in enumerate(language):
+            for neighbor_idx, neighbor in enumerate(language):
+                if idx == neighbor_idx:
+                    continue
+
+                if region.touches(neighbor):
+                    graph.add_edge(idx, neighbor_idx)
+
+        return graph
+    
+    # Find the region that contains the entity
+    @staticmethod
+    def localize(entity, language):
+        point = Point(entity)
+        try:
+            region_idx = list(map(lambda region: region.contains(point), language)).index(True)
+        except:
+            region_idx = None
+        return region_idx
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):
@@ -242,7 +274,7 @@ class CDL:
             language = self._load(approach, problem_instance)
         except FileNotFoundError:
             print(f'No stored {approach} language for {problem_instance} problem instance.')
-            print('Generating new language...')
+            print('Generating new language...\n')
             coeffs = self._generate_optimal_coeffs(problem_instance)
             lines = CDL.get_lines_from_coeffs(coeffs)
             valid_lines = CDL.get_valid_lines(lines)
@@ -251,12 +283,3 @@ class CDL:
         
         self._visualize(approach, problem_instance, language)
         return language
-    
-    # Find the region that contains the entity
-    @staticmethod
-    def localize(entity, language):
-        try:
-            region_idx = list(map(lambda region: region.contains(entity), language)).index(True)
-        except:
-            region_idx = None
-        return region_idx   

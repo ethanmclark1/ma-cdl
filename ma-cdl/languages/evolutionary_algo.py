@@ -48,6 +48,7 @@ class EA(CDL):
             bounds = [(lb, ub) for _ in range(3*num)]
             res = optimize.differential_evolution(self.optimizer, bounds, args=(problem_instance,),
                                                   tol=self.tol, maxiter=self.max_iter*num, init='sobol')
+            wandb.log({'cost': res.fun, 'num_lines': num})
             self._log_regions(problem_instance, num, res.x, res.fun)
 
             if optim_val > res.fun:

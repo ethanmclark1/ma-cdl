@@ -18,11 +18,14 @@ class Bandit(CDL):
         self.optimizer = Adam(self.reinforce.parameters(), lr=self.learning_rate)
     
     def _init_hyperparams(self):
+        num_records = 5
+        
         self.gamma = 0
-        self.decay_rate = 0.975
+        self.decay_rate = 0.99
         self.entropy_coeff = 0.05
         self.num_episodes = 200000
         self.learning_rate = 0.005
+        self.record_freq = self.num_episodes // num_records
         
     def _init_wandb(self):
         wandb.init(project='ma-cdl', entity='ethanmclark1', name='Bandit')
@@ -91,9 +94,7 @@ class Bandit(CDL):
         self.entropy_coeff *= self.decay_rate
 
     # Train bandit on a given problem instance
-    def _train(self, problem_instance):
-        returns = []
-        
+    def _train(self, problem_instance):        
         for episode in range(self.num_episodes):
             actions = []
             done = False
@@ -105,12 +106,8 @@ class Bandit(CDL):
                 num_action += 1
             
             self._learn(actions, penalty)
-            
-            returns.append(penalty)
-            avg_returns = np.mean(returns[-100:])
-            wandb.log({"avg_returns": avg_returns})
-            
-            if episode % 50000 == 0 and len(regions) > 1:
+            wandb.log({"penalty": penalty})
+            if episode % self.record_freq == 0 and len(regions) > 1:
                 self._log_regions(problem_instance, episode, regions, penalty)
         
     def _generate_optimal_coeffs(self, problem_instance):

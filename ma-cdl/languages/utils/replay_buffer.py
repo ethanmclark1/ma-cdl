@@ -1,75 +1,47 @@
 """
 This code is based on the following repository:
 
-Author: OpenAI
-Repository: Baselines
-URL: https://github.com/openai/baselines
-Version: ea25b9e
+Author: Scott Fujimoto
+Repository: TD3
+URL: https://github.com/sfujim/TD3/blob/master/utils.py
+Version: 6a9f761
 License: MIT License
 """
 
+import torch
 import numpy as np
-import random
 
 class ReplayBuffer(object):
-    def __init__(self, size=500000):
-        """Create Replay buffer.
+	def __init__(self, state_dim, action_dim, max_size=int(1e6)):
+		self.max_size = max_size
+		self.ptr = 0
+		self.size = 0
 
-        Parameters
-        ----------
-        size: int
-            Max number of transitions to store in the buffer. When the buffer
-            overflows the old memories are dropped.
-        """
-        self._storage = []
-        self._maxsize = size
-        self._next_idx = 0
+		self.state = np.zeros((max_size, state_dim))
+		self.action = np.zeros((max_size, action_dim))
+		self.next_state = np.zeros((max_size, state_dim))
+		self.penalty = np.zeros((max_size, 1))
+		self.not_done = np.zeros((max_size, 1))
 
-    def __len__(self):
-        return len(self._storage)
 
-    def add(self, obs_t, action, reward, obs_tp1, done):
-        data = (obs_t, action, reward, obs_tp1, done)
+	def add(self, state, action, next_state, penalty, done):
+		self.state[self.ptr] = state
+		self.action[self.ptr] = action
+		self.next_state[self.ptr] = next_state
+		self.penalty[self.ptr] = penalty
+		self.not_done[self.ptr] = 1. - done
 
-        if self._next_idx >= len(self._storage):
-            self._storage.append(data)
-        else:
-            self._storage[self._next_idx] = data
-        self._next_idx = (self._next_idx + 1) % self._maxsize
+		self.ptr = (self.ptr + 1) % self.max_size
+		self.size = min(self.size + 1, self.max_size)
 
-    def _encode_sample(self, idxes):
-        obses_t, actions, rewards, obses_tp1, dones = [], [], [], [], []
-        for i in idxes:
-            data = self._storage[i]
-            obs_t, action, reward, obs_tp1, done = data
-            obses_t.append(np.array(obs_t, copy=False))
-            actions.append(np.array(action, copy=False))
-            rewards.append(reward)
-            obses_tp1.append(np.array(obs_tp1, copy=False))
-            dones.append(done)
-        return np.array(obses_t), np.array(actions), np.array(rewards), np.array(obses_tp1), np.array(dones)
 
-    def sample(self, batch_size):
-        """Sample a batch of experiences.
+	def sample(self, batch_size):
+		ind = np.random.randint(0, self.size, size=batch_size)
 
-        Parameters
-        ----------
-        batch_size: int
-            How many transitions to sample.
-
-        Returns
-        -------
-        obs_batch: np.array
-            batch of observations
-        act_batch: np.array
-            batch of actions executed given obs_batch
-        rew_batch: np.array
-            rewards received as results of executing act_batch
-        next_obs_batch: np.array
-            next set of observations seen after executing act_batch
-        done_mask: np.array
-            done_mask[i] = 1 if executing act_batch[i] resulted in
-            the end of an episode and 0 otherwise.
-        """
-        idxes = [random.randint(0, len(self._storage) - 1) for _ in range(batch_size)]
-        return self._encode_sample(idxes)
+		return (
+			torch.FloatTensor(self.state[ind]),
+			torch.FloatTensor(self.action[ind]),
+			torch.FloatTensor(self.next_state[ind]),
+			torch.FloatTensor(self.penalty[ind]),
+			torch.FloatTensor(self.not_done[ind])
+		)

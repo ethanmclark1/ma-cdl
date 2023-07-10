@@ -36,7 +36,7 @@ class AE:
         self.num_train_epochs = 1000
     
     def _init_wandb(self):
-        wandb.init(project='ma-cdl', entity='ethanmclark1', name='autoencoder')
+        wandb.init(project='ma-cdl', entity='ethanmclark1', name='Autoencoder')
         config = wandb.config
         config.learning_rate = self.learning_rate
         config.num_train_epochs = self.num_train_epochs

@@ -19,16 +19,16 @@ class ReplayBuffer(object):
 
 		self.state = np.zeros((max_size, state_dim))
 		self.action = np.zeros((max_size, action_dim))
+		self.reward = np.zeros((max_size, 1))
 		self.next_state = np.zeros((max_size, state_dim))
-		self.penalty = np.zeros((max_size, 1))
 		self.not_done = np.zeros((max_size, 1))
 
 
-	def add(self, state, action, next_state, penalty, done):
+	def add(self, state, action, reward, next_state, done):
 		self.state[self.ptr] = state
 		self.action[self.ptr] = action
+		self.reward[self.ptr] = reward
 		self.next_state[self.ptr] = next_state
-		self.penalty[self.ptr] = penalty
 		self.not_done[self.ptr] = 1. - done
 
 		self.ptr = (self.ptr + 1) % self.max_size
@@ -41,7 +41,7 @@ class ReplayBuffer(object):
 		return (
 			torch.FloatTensor(self.state[ind]),
 			torch.FloatTensor(self.action[ind]),
+			torch.FloatTensor(self.reward[ind]),
 			torch.FloatTensor(self.next_state[ind]),
-			torch.FloatTensor(self.penalty[ind]),
 			torch.FloatTensor(self.not_done[ind])
 		)

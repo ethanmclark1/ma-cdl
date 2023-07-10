@@ -28,9 +28,9 @@ class CDL:
         self.max_lines = 6
         self.world = world
         self.scenario = scenario
-        self.configs_to_consider = 30
+        self.configs_to_consider = 100
         self.np_random = np.random.default_rng()
-        self.weights = np.array([3, 2, 1.5, 3, 2])
+        self.weights = np.array([6, 10, 2, 4, 10])
             
         self.agent_radius = world.agents[0].size
         self.goal_radius = world.goals[0].size
@@ -60,16 +60,14 @@ class CDL:
             language = pickle.load(f)
         return language
         
-    # Create regions and obstacles to be uploaded to Wand 
+    # Create regions to be uploaded to Wand 
     def _get_image(self, problem_instance, title_name, title_data, regions, reward):
         _, ax = plt.subplots()
         problem_instance = problem_instance.capitalize()
-
         for idx, region in enumerate(regions):
             ax.fill(*region.exterior.xy)
             ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
-
-        ax.set_title(f'problem_instance: {problem_instance}   {title_name.capitalize()}: {title_data}   Reward: {reward:.2f}')
+        ax.set_title(f'Problem Instance: {problem_instance}   {title_name.capitalize()}: {title_data}   Reward: {reward:.2f}')
 
         buffer = io.BytesIO()
         plt.savefig(buffer, format='png')
@@ -233,14 +231,14 @@ class CDL:
     """ 
     Calculate cost of a given problem (i.e. all configurations) 
     with respect to the regions and the given positional constraints: 
-        1. Mean of unsafe plans
-        2. Variance of unsafe plans
+        1. Mean of nonnavigable area
+        2. Variance of nonnavigable area
         3. Language efficiency
-        4. Mean of nonnavigable area
-        5. Variance of nonnavigable area
+        4. Mean of unsafe plans
+        5. Variance of unsafe plans
     """
     def optimizer(self, regions, problem_instance):  
-        instance_cost = 2e2
+        instance_cost = 3e2
         
         if len(regions) > 1:
             i = 0
@@ -253,13 +251,13 @@ class CDL:
                     unsafe.append(config_cost[1])
                     i += 1
 
-            unsafe_mu = mean(unsafe)
-            unsafe_var = variance(unsafe)
-            efficiency = len(regions)
             nonnavigable_mu = mean(nonnavigable)
             nonnavigable_var = variance(nonnavigable)
+            efficiency = len(regions)
+            unsafe_mu = mean(unsafe)
+            unsafe_var = variance(unsafe)
             
-            criterion = np.array([unsafe_mu, unsafe_var, efficiency, nonnavigable_mu, nonnavigable_var])
+            criterion = np.array([nonnavigable_mu, nonnavigable_var, efficiency, unsafe_mu, unsafe_var])
             instance_cost = np.sum(self.weights * criterion)
             
         return instance_cost

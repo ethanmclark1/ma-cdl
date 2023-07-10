@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -41,26 +40,26 @@ class Autoencoder(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x):
-        encoded = self.encoder(x)
+    def forward(self, state):
+        encoded = self.encoder(state)
         decoded = self.decoder(encoded)
         return decoded
     
-    def get_encoded(self, x):
+    def get_encoded(self, state):
         with torch.no_grad():
-            encoded = self.encoder(x)
+            encoded = self.encoder(state)
         return encoded.flatten().numpy()
     
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(Actor, self).__init__()
-        self.l1 = nn.Linear(state_dim, 128)
-        self.l2 = nn.Linear(128, 64)
-        self.l3 = nn.Linear(64, action_dim)
+        self.l1 = nn.Linear(state_dim, 64)
+        self.l2 = nn.Linear(64, 32)
+        self.l3 = nn.Linear(32, action_dim)
             
-    def forward(self, x):
-        x = F.relu(self.l1(x))
+    def forward(self, state):
+        x = F.relu(self.l1(state))
         x = F.relu(self.l2(x))
         coefficients = torch.tanh(self.l3(x))
         return coefficients
@@ -71,52 +70,33 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         
         # Q1 architecture
-        self.l1 = nn.Linear(state_dim + action_dim, 128)
-        self.l2 = nn.Linear(128, 64)
-        self.l3 = nn.Linear(64, 1)
+        self.l1 = nn.Linear(state_dim + action_dim, 64)
+        self.l2 = nn.Linear(64, 16)
+        self.l3 = nn.Linear(16, 1)
         
         # Q2 architecture
-        self.l4 = nn.Linear(state_dim + action_dim, 128)
-        self.l5 = nn.Linear(128, 64)
-        self.l6 = nn.Linear(64, 1)
+        self.l4 = nn.Linear(state_dim + action_dim, 64)
+        self.l5 = nn.Linear(64, 16)
+        self.l6 = nn.Linear(16, 1)
         
-    def forward(self, x, u):
-        xu = torch.cat([x, u], -1)
+    def forward(self, state, action):
+        sa = torch.cat([state, action], 1)
         
         # Q1 architecture
-        x1 = F.relu(self.l1(xu))
-        x1 = F.relu(self.l2(x1))
-        x1 = self.l3(x1)
+        q1 = F.relu(self.l1(sa))
+        q1 = F.relu(self.l2(q1))
+        q1 = self.l3(q1)
         
         # Q2 architecture
-        x2 = F.relu(self.l4(xu))
-        x2 = F.relu(self.l5(x2))
-        x2 = self.l6(x2)
-        return x1, x2
+        q2 = F.relu(self.l4(sa))
+        q2 = F.relu(self.l5(q2))
+        q2 = self.l6(q2)
+        return q1, q2
     
     # More efficient to only compute Q1
-    def get_Q1(self, x, u):
-        xu = torch.cat([x, u], -1)
-        x1 = F.relu(self.l1(xu))
-        x1 = F.relu(self.l2(x1))
-        x1 = self.l3(x1)
-        return x1
-
-
-class REINFORCE(nn.Module):
-    def __init__(self, state_dim, action_dim):
-        super(REINFORCE, self).__init__()
-        self.l1 = nn.Linear(state_dim, 8)
-        self.l2 = nn.Linear(8, 16)
-        self.l3 = nn.Linear(16, action_dim)
-        self.l4 = nn.Linear(16, action_dim)
-                
-    def forward(self, context):
-        context = torch.FloatTensor(context)
-        x = F.relu(self.l1(context))
-        x = F.relu(self.l2(x))
-        mean = torch.tanh(self.l3(x))
-        log_std = self.l4(x)
-        log_std = torch.clamp(log_std, min=np.log(1e-3), max=1)
-        std_dev = torch.exp(log_std)
-        return mean, std_dev
+    def get_Q1(self, state, action):
+        sa = torch.cat([state, action], 1)
+        q1 = F.relu(self.l1(sa))
+        q1 = F.relu(self.l2(q1))
+        q1 = self.l3(q1)
+        return q1

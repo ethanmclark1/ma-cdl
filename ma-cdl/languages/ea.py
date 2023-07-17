@@ -16,7 +16,7 @@ class EA(CDL):
 
     def _init_hyperparams(self):
         self.mutation_prob = 0.2
-        self.crossover_prob = 0.6
+        self.crossover_prob = 0.7
         self.tournament_size = 3
         self.population_size = 100
         self.num_generations = 150

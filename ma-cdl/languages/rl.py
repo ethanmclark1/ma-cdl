@@ -80,17 +80,17 @@ class RL(CDL):
         wandb.log({"image": wandb.Image(pil_image)})
 
     # Overlay lines in the environment
-    def _step(self, problem_instance, action, num_action):
+    def _step(self, problem_instance, action, num_lines):
         reward = 0
         done = False
-        prev_num_lines = max(len(self.valid_lines), 4)
+        prev_num_valid = max(len(self.valid_lines), 4)
                 
         line = CDL.get_lines_from_coeffs(action)
         valid_lines = CDL.get_valid_lines(line)
         self.valid_lines.update(valid_lines)
         regions = CDL.create_regions(list(self.valid_lines))
         
-        if len(self.valid_lines) == prev_num_lines or num_action == self.max_lines:
+        if len(self.valid_lines) == prev_num_valid or num_lines == self.max_lines:
             done = True
             reward = -super().optimizer(regions, problem_instance)
             self.valid_lines.clear()
@@ -154,19 +154,19 @@ class RL(CDL):
     def _populate_buffer(self, problem_instance, start_state):
         for _ in range(self.dummy_eps):
             done = False
-            num_action = 1
+            num_lines = 1
             state = start_state
             while not done:
                 action = self._select_action(state)
-                reward, next_state, done, _ = self._step(problem_instance, action, num_action)
+                reward, next_state, done, _ = self._step(problem_instance, action, num_lines)
                 self._remember(state, action, reward, next_state, done)
                 state = next_state
-                num_action += 1
+                num_lines += 1
                                 
-    # Select an action (coefficients of a linear line)
+    # Select coefficients for the linear lines
     def _select_action(self, state):
         if np.random.random() < self.epsilon:
-            action = np.random.choice(self.action_grid, size=self.action_dim)
+            action = self.rng.choice(self.action_grid, size=self.action_dim)
             action = np.digitize(action, self.action_grid)
         else:
             q_values = self.network(state)
@@ -205,12 +205,12 @@ class RL(CDL):
         
         for episode in range(self.num_episodes):
             done = False
-            num_action = 0
+            num_lines = 0
             state = start_state
             while not done: 
-                num_action += 1
+                num_lines += 1
                 action = self._select_action(state)
-                reward, next_state, done, regions = self._step(problem_instance, action, num_action)  
+                reward, next_state, done, regions = self._step(problem_instance, action, num_lines)  
                 self._remember(state, action, reward, next_state, done)         
                 self._learn()
                 self._decrement_epsilon()
@@ -238,20 +238,25 @@ class RL(CDL):
         optim_coeffs = []
         self.epsilon = 0
         with torch.no_grad():
-            num_action = 1
+            num_lines = 1
             state = start_state
             while not done: 
                 action = self._select_action(state)
                 optim_coeffs.append(action)
-                reward, next_state, done, regions = self._step(problem_instance, action, num_action)
+                reward, next_state, done, regions = self._step(problem_instance, action, num_lines)
                 state = next_state
-                num_action += 1
+                num_lines += 1
+        
+        self._log_regions(problem_instance, 'Final', regions, reward)
         
         end_time = time.time()
         elapsed_time = round((end_time - start_time) / 3600, 3)
-        wandb.log({"Elapsed Time": elapsed_time})
         
-        self._log_regions(problem_instance, 'Final', regions, reward)
-        wandb.finish()  
+        wandb.log({"Final Reward": reward})
+        wandb.log({"Best Coeffs": optim_coeffs})
+        wandb.log({"Best Num Lines": len(optim_coeffs)})
+        wandb.log({"Elapsed Time": elapsed_time})
+        wandb.finish()
+        
         optim_coeffs = np.array(optim_coeffs).reshape(-1, self.action_dim)   
         return optim_coeffs  

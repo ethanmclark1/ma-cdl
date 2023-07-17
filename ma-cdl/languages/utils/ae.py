@@ -15,7 +15,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 IMAGE_SIZE = (64, 64)
 
 class AE:
-    def __init__(self, output_dims, rng, max_lines):
+    def __init__(self, output_dims, rng, max_lines, action_grid):
         self.model = Autoencoder(output_dims)
         try:
             state_dict = torch.load('ma-cdl/languages/history/AE.pth')
@@ -24,7 +24,7 @@ class AE:
             self._init_hyperparams()
             self._init_wandb()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, self.num_train_epochs, max_lines)
+            self.dataset = ImageDataset(self.num_epochs, rng, max_lines, action_grid)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
             self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
             self._train()
@@ -32,14 +32,14 @@ class AE:
             
     def _init_hyperparams(self):
         self.batch_size = 16
+        self.num_epochs = 1000
         self.learning_rate = 1e-4
-        self.num_train_epochs = 1000
     
     def _init_wandb(self):
         wandb.init(project='ma-cdl', entity='ethanmclark1', name='Autoencoder')
         config = wandb.config
         config.learning_rate = self.learning_rate
-        config.num_train_epochs = self.num_train_epochs
+        config.num_epochs = self.num_epochs
             
     def _save_model(self):
         directory = 'ma-cdl/languages/history'
@@ -104,7 +104,7 @@ class AE:
         patience_counter = 0
         patience_limit = 10
 
-        for epoch in range(self.num_train_epochs):
+        for epoch in range(self.num_epochs):
             # Training loop
             for img in train_loader:
                 reconstructed = self.model(img)
@@ -124,7 +124,7 @@ class AE:
 
             val_loss /= len(val_loader)
             wandb.log({'loss': loss.item(), 'val_loss': val_loss})
-            print(f'Epoch [{epoch + 1}/{self.num_train_epochs}], Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}')
+            print(f'Epoch [{epoch + 1}/{self.num_epochs}], Loss: {loss.item():.4f}, Val Loss: {val_loss:.4f}')
             
             self.scheduler.step(val_loss)
 
@@ -161,12 +161,15 @@ class AE:
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
         plt.show()
+        
 
 class ImageDataset(Dataset):
-    def __init__(self, rng, num_episodes, max_lines):
-        self.rng = rng
+    def __init__(self, num_episodes, rng,  max_lines, action_grid):
         self.num_episodes = num_episodes
+        self.rng = rng
         self.max_lines = max_lines
+        self.action_grid = action_grid
+        
         try:
             self.images = self.load_images()
         except:
@@ -210,7 +213,7 @@ class ImageDataset(Dataset):
             prev_num_lines = 4
             valid_lines  = set()
             while not done: 
-                action = self.rng.uniform(-1, 1, 3)
+                action = np.random.choice(self.action_grid, size=3)
                 line = CDL.get_lines_from_coeffs(action)
                 valid = CDL.get_valid_lines(line)
                 valid_lines.update(valid)

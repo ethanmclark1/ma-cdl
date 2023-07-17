@@ -10,7 +10,6 @@ from PIL import Image
 from rtree import index
 from itertools import product
 from statistics import mean, variance
-from languages.utils.rrt_star import RRTStar
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -24,23 +23,20 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 class CDL:
     def __init__(self, scenario, world):
-        self.min_lines = 2
-        self.max_lines = 6
+        self.min_lines = 1
+        self.max_lines = 5
         self.world = world
         self.scenario = scenario
-        self.configs_to_consider = 100
-        self.np_random = np.random.default_rng()
-        self.weights = np.array([6, 10, 2, 4, 10])
+        self.configs_to_consider = 50
+        self.rng = np.random.default_rng(seed=42)
+        self.weights = np.array([70, 100, 8, 12, 15])
             
-        self.agent_radius = world.agents[0].size
-        self.goal_radius = world.goals[0].size
-        self.obstacle_radius = world.large_obstacles[0].size
+        self.resolution = 0.1
+        size = int(2 / self.resolution)
+        self.graph = nx.grid_2d_graph(size, size)
         
-        self.planner = RRTStar(
-            self.agent_radius, 
-            self.goal_radius, 
-            self.obstacle_radius
-            )
+        self.agent_radius = world.agents[0].size
+        self.obstacle_radius = world.large_obstacles[0].size
     
     def _save(self, approach, problem_instance, language):
         directory = f'ma-cdl/languages/history/{approach.lower()}'
@@ -59,7 +55,7 @@ class CDL:
         with open(file_path, 'rb') as f:
             language = pickle.load(f)
         return language
-        
+                
     # Create regions to be uploaded to Wand 
     def _get_image(self, problem_instance, title_name, title_data, regions, reward):
         _, ax = plt.subplots()
@@ -103,23 +99,26 @@ class CDL:
         equations = np.reshape(coeffs, (-1, 3))
         for equation in equations:
             a, b, c = equation
-            # Indicates an infinite slope (invalid line)
-            if b == 0:
-                continue
             
-            slope = a / -b
-            if abs(slope) >= 1:
-                y1 = (-a + c) / -b
-                y2 = (a + c) / -b
-                start, end = (-1, y1), (1, y2)
+            if a == 0:  # Horizontal line
+                start, end = (-1, -c/b), (1, -c/b)
+            elif b == 0:  # Vertical line
+                start, end = (-c/a, -1), (-c/a, 1)
             else:
-                x1 = (-b + c) / -a
-                x2 = (b + c) / -a
-                start, end = (x1, -1), (x2, 1)
+                slope = a / -b
+                if abs(slope) >= 1:
+                    y1 = (-a + c) / -b
+                    y2 = (a + c) / -b
+                    start, end = (-1, y1), (1, y2)
+                else:
+                    x1 = (-b + c) / -a
+                    x2 = (b + c) / -a
+                    start, end = (x1, -1), (x2, 1)
+                            
             lines.append(LineString([start, end]))
-
+            
         return lines
-    
+
     # Find the intersections between lines and the environment boundary
     @staticmethod
     def get_valid_lines(lines):
@@ -127,7 +126,7 @@ class CDL:
 
         for line in lines:
             intersection = SQUARE.intersection(line)
-            if not intersection.is_empty:
+            if not intersection.is_empty and not intersection.geom_type == 'Point':
                 coords = np.array(intersection.coords)
                 if np.any(np.abs(coords) == 1, axis=1).all():
                     valid_lines.append(intersection)
@@ -137,7 +136,7 @@ class CDL:
     # Create polygonal regions from lines
     @staticmethod
     def create_regions(valid_lines):
-        lines = MultiLineString(valid_lines).buffer(distance=1e-12)
+        lines = MultiLineString(valid_lines).buffer(distance=1e-6)
         boundary = lines.convex_hull
         polygons = boundary.difference(lines)
         regions = [polygons] if polygons.geom_type == 'Polygon' else list(polygons.geoms)
@@ -145,7 +144,7 @@ class CDL:
     
     # Create graph for path planning using networkx
     @staticmethod
-    def create_graph(language):
+    def create_graph_from_language(language):
         graph = nx.Graph()
         
         for idx, region in enumerate(language):
@@ -161,7 +160,7 @@ class CDL:
                     graph.add_edge(idx, neighbor_idx)
 
         return graph
-    
+        
     # Find the region that contains the entity
     @staticmethod
     def localize(entity, language):
@@ -174,9 +173,9 @@ class CDL:
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):
-        self.scenario.reset_world(self.world, self.np_random, problem_instance)
+        self.scenario.reset_world(self.world, self.rng, problem_instance)
         
-        rand_idx = self.np_random.choice(len(self.world.agents))
+        rand_idx = self.rng.choice(len(self.world.agents))
         start = self.world.agents[rand_idx].state.p_pos
         goal = self.world.agents[rand_idx].goal.state.p_pos
         obstacles = [obs.state.p_pos for obs in self.world.large_obstacles]
@@ -196,37 +195,50 @@ class CDL:
                     obstacles_idx.add(region_idx)
         
         return obstacles_idx, rtree
-    
+        
     """
     Calculate cost of a configuration (i.e. start position, goal position, and obstacle positions)
     with respect to the regions:
         1. Unsafe area caused by all obstacles
-        2. Unsafe plan caused by non-existent path from start to goal while avoiding unsafe area
+        2. Unsafe path caused by entering into obstacle regions while moving optimally from start to goal
     """
     def _config_cost(self, start, goal, obstacles, regions): 
-        obstacles_with_size = [Point(obs_pos).buffer(self.obstacle_radius) for obs_pos in obstacles]
+        def discretize_position(position):
+            return tuple(map(lambda pos: int((pos + 1) / self.resolution), position))
         
+        def dist(a, b):
+            return np.linalg.norm(np.array(a) - np.array(b))
+        
+        obstacles_with_size = [Point(obs_pos).buffer(self.obstacle_radius) for obs_pos in obstacles]
         obstacles_idx, rtree = self._create_index(obstacles_with_size, regions)
         nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
         
-        path = self.planner.get_path(start, goal, obstacles)
+        graph = self.graph.copy()
+        start_node = discretize_position(start)
+        goal_node = discretize_position(goal)
+        obstacle_nodes = {discretize_position(obs) for obs in obstacles}
+        obstacle_nodes.discard(start_node)
+        obstacle_nodes.discard(goal_node)
+        graph.remove_nodes_from(obstacle_nodes)
+            
+        path = nx.astar_path(graph, start_node, goal_node, heuristic=dist)
         
-        num_path_checks = 10
-        if path is not None: 
-            unsafe = 0
-            indices = np.linspace(0, len(path) - 1, num_path_checks, dtype=int)
-            
-            for i in indices:
-                path_point = path[i]
-                agent = Point(path_point).buffer(self.agent_radius)            
-                for region_idx in rtree.intersection(agent.bounds):
-                    if regions[region_idx].intersects(agent) and region_idx in obstacles_idx:
-                        unsafe += 1
-                        break
-        else:
-            unsafe = int(num_path_checks * 1.5)
-            
-        return nonnavigable, unsafe
+        num_points_to_check = min(8, len(path))
+        indices = np.linspace(0, len(path) - 1, num_points_to_check, dtype=int)
+        sampled_points = [path[i] for i in indices]
+
+        unsafe = 0
+        for point in sampled_points:
+            continous_point = (point[0] * self.resolution - 1, point[1] * self.resolution - 1)
+            agent = Point(continous_point).buffer(self.agent_radius)
+            for region_idx in rtree.intersection(agent.bounds):
+                if regions[region_idx].intersects(agent) and region_idx in obstacles_idx:
+                    unsafe += 1
+                    break
+        
+        # Mulitply by 4 to give it equal weighting to nonnavigable area
+        scaled_unsafe = (unsafe / num_points_to_check) * 4
+        return nonnavigable, scaled_unsafe
     
     """ 
     Calculate cost of a given problem (i.e. all configurations) 
@@ -238,7 +250,7 @@ class CDL:
         5. Variance of unsafe plans
     """
     def optimizer(self, regions, problem_instance):  
-        instance_cost = 3e2
+        instance_cost = 4e2
         
         if len(regions) > 1:
             i = 0
@@ -259,7 +271,7 @@ class CDL:
             
             criterion = np.array([nonnavigable_mu, nonnavigable_var, efficiency, unsafe_mu, unsafe_var])
             instance_cost = np.sum(self.weights * criterion)
-            
+        
         return instance_cost
         
     def _generate_optimal_coeffs(self, problem_instance):

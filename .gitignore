@@ -138,3 +138,4 @@ ma-cdl.code-workspace
 # Results from running the code
 ma-cdl/languages/history
 ma-cdl/results
+ground_truth.txt

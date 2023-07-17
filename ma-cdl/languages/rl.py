@@ -1,28 +1,17 @@
-"""
-This code is based on the following repository:
-
-Author: Scott Fujimoto
-Repository: TD3
-URL: https://github.com/sfujim/TD3/blob/master/TD3.py
-Version: 6a9f761
-License: MIT License
-"""
-
 import time
-import copy
 import wandb
 import torch
+import random
 import itertools
 import numpy as np
-import torch.nn.functional as F
 
 from torch.optim import Adam
 from languages.utils.ae import AE
 from languages.utils.cdl import CDL
-from languages.utils.networks import Actor, Critic
+from languages.utils.networks import DuelingDQN
 from languages.utils.replay_buffer import ReplayBuffer
 
-"""Using Twin Delayed Deep Deterministic Policy Gradient (TD3)"""
+""" Using Dueling Deep Q-Network (DuelingDQN) """
 class RL(CDL):
     def __init__(self, scenario, world):
         super().__init__(scenario, world)
@@ -36,52 +25,60 @@ class RL(CDL):
         
         self.action_dim = 3
         self.state_dim = 128
+        self.loss = torch.nn.MSELoss()
+        self.action_grid = np.arange(-1, 1 + self.resolution, self.resolution)
         
         self._init_hyperparams()
-        self.rng = np.random.default_rng(seed=42)
+        self.autoencoder = AE(self.state_dim, self.rng, self.max_lines, self.action_grid)
+        self.network = DuelingDQN(self.state_dim, self.action_dim)
+        self.target = DuelingDQN(self.state_dim, self.action_dim)
+        self.optim = Adam(self.network.parameters(), lr=self.alpha)
         self.replay_buffer = ReplayBuffer(self.state_dim, self.action_dim)
-        self.autoencoder = AE(self.state_dim, self.rng, self.max_lines)
-        
-        self.actor = Actor(self.state_dim, self.action_dim)
-        self.actor_target = copy.deepcopy(self.actor)
-        self.actor_optimizer = Adam(self.actor.parameters(), lr=self.learning_rate)
-        
-        self.critic = Critic(self.state_dim, self.action_dim)
-        self.critic_target = copy.deepcopy(self.critic)
-        self.critic_optimizer = Adam(self.critic.parameters(), lr=self.learning_rate)  
         
     def _init_hyperparams(self):
         num_records = 10
+        num_network_updates = 20
         
-        self.tau = 0.01
-        self.dummy_eps = 250
-        self.policy_freq = 3
-        self.discount = 0.999
+        self.alpha = 3e-4
+        self.gamma = 0.99
+        self.dummy_eps = 200
         self.batch_size = 256
-        self.policy_noise = 0.15
-        self.num_episodes = 3000
-        self.num_iterations = 128
-        self.learning_rate = 1e-4
+        self.epsilon_start = 1 
+        self.min_epsilon = 0.05
+        self.num_episodes = 2000
+        self.num_iterations = 100
+        self.epsilon_decay = 0.99 
         self.record_freq = self.num_episodes // num_records
+        self.replace_freq = self.num_episodes // num_network_updates
         
     def _init_wandb(self):
         wandb.init(project='ma-cdl', entity='ethanmclark1', name='RL')
         config = wandb.config
-        config.tau = self.tau
-        config.discount = self.discount 
         config.weights = self.weights
+        config.resolution = self.resolution
+        config.configs_to_consider = self.configs_to_consider
+        
+        # Hyperparameters
+        config.alpha = self.alpha
+        config.gamma = self.gamma 
         config.dummy_eps = self.dummy_eps
+        config.epsilon = self.epsilon_start
         config.batch_size = self.batch_size
-        config.policy_freq = self.policy_freq
-        config.policy_noise = self.policy_noise
-        config.learning_rate = self.learning_rate
+        config.num_episodes = self.num_episodes
+        config.epsilon_decay = self.epsilon_decay
         config.num_iterations = self.num_iterations
+        
+        # Neural Network
+        config.l1 = self.network.l1
+        config.l2 = self.network.l2
+        config.value_layer = self.network.value
+        config.advantage_layer = self.network.advantage
     
     # Upload regions to Weights and Biases
     def _log_regions(self, problem_instance, episode, regions, reward):
         pil_image = super()._get_image(problem_instance, 'Episode', episode, regions, reward)
         wandb.log({"image": wandb.Image(pil_image)})
-            
+
     # Overlay lines in the environment
     def _step(self, problem_instance, action, num_action):
         reward = 0
@@ -101,6 +98,19 @@ class RL(CDL):
         next_state = self.autoencoder.get_state(regions)
         return reward, next_state, done, regions
     
+    # Generate samples of permuted actions to form the basis of transition hallucinations
+    def _hallucinate(self):
+        if len(self.actions) > 4:
+            actions = self.actions.copy()
+            shuffled_actions = []
+            for _ in range(24):
+                random.shuffle(actions)
+                shuffled_actions.append(actions.copy())
+        else:
+            shuffled_actions = list(itertools.permutations(self.actions))
+
+        return shuffled_actions
+    
     # Add transition to replay buffer
     def _remember(self, state, action, reward, next_state, done):
         self.replay_buffer.add(state, action, reward, next_state, done)
@@ -116,8 +126,7 @@ class RL(CDL):
             default_square = CDL.create_regions(default_boundary_lines)
             start_state = self.autoencoder.get_state(default_square)
             
-            # Hallucinate transitions according to shuffled actions
-            shuffled_actions = list(itertools.permutations(self.actions))
+            shuffled_actions = self._hallucinate()
             for shuffled_action in shuffled_actions:
                 state = start_state
                 self.valid_lines.clear()
@@ -148,60 +157,47 @@ class RL(CDL):
             num_action = 1
             state = start_state
             while not done:
-                action = self.rng.uniform(-1, 1, self.action_dim)
+                action = self._select_action(state)
                 reward, next_state, done, _ = self._step(problem_instance, action, num_action)
                 self._remember(state, action, reward, next_state, done)
                 state = next_state
                 num_action += 1
                                 
     # Select an action (coefficients of a linear line)
-    def _select_action(self, state, add_noise):
-        state = torch.FloatTensor(state)
-        action = self.actor(state)
-        
-        if add_noise: 
-            noise = self.rng.uniform(-self.policy_noise, self.policy_noise, self.action_dim)
-            noise = torch.FloatTensor(noise)
-            action = (action + noise).clamp(-1, 1)
-                                  
-        return action.detach().numpy()
+    def _select_action(self, state):
+        if np.random.random() < self.epsilon:
+            action = np.random.choice(self.action_grid, size=self.action_dim)
+            action = np.digitize(action, self.action_grid)
+        else:
+            q_values = self.network(state)
+            action_idx = torch.argmax(q_values).detach().numpy()
+            action = self.action_grid[action_idx]
+        return action
     
+    # Update the target network
+    def _update_target(self, episode):
+        if episode > 0 and episode % self.replace_freq == 0:
+            self.target.load_state_dict(self.network.state_dict())
+
     # Learn from the replay buffer
-    def _learn(self):
-        for it in range(self.num_iterations):
-            states, actions, rewards, next_states, not_dones = self.replay_buffer.sample(self.batch_size)
+    def _learn(self, episode):
+        self._update_target(episode)
+        
+        for _ in range(self.num_iterations):
+            states, actions, rewards, next_states, dones = self.replay_buffer.sample(self.batch_size)
             
-            with torch.no_grad():
-                noise = self.rng.uniform(-self.policy_noise, self.policy_noise, self.action_dim)
-                noise = torch.FloatTensor(noise)
-                next_actions = (self.actor_target(next_states) + noise).clamp(-1, 1)
-                
-                target_Q1, target_Q2 = self.critic_target(next_states, next_actions)
-                target_Q = torch.min(target_Q1, target_Q2)
-                target_Q = rewards + not_dones * self.discount * target_Q
+            network_qval = self.network(states)
+            target_qval = rewards + (1 - dones) * self.gamma * self.target(next_states).detach().max(1)[0].unsqueeze(1)
             
-            current_Q1, current_Q2 = self.critic_target(states, actions)
+            self.optim.zero_grad()
+            loss = self.loss(target_qval, network_qval)
+            loss.backward()
+            self.optim.step()
             
-            critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
-            
-            self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic_optimizer.step()
-            
-            # Delayed policy updates
-            if it % self.policy_freq == 0:
-                actor_loss = -self.critic.get_Q1(states, self.actor(states)).mean()
-                
-                # Optimize the actor
-                self.actor_optimizer.zero_grad()
-                actor_loss.backward()
-                self.actor_optimizer.step()
-                
-                # Update the frozen target models
-                for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-                    target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-                for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
-                    target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+    # Decrease rate of exploratio as time goes on
+    def _decrement_epsilon(self):
+        self.epsilon *= self.epsilon_decay
+        self.epsilon = max(self.epsilon, self.min_epsilon)
     
     # Train model on a given problem_instance
     def _train(self, problem_instance, start_state):        
@@ -213,14 +209,15 @@ class RL(CDL):
             state = start_state
             while not done: 
                 num_action += 1
-                action = self._select_action(state, add_noise=True)
+                action = self._select_action(state)
                 reward, next_state, done, regions = self._step(problem_instance, action, num_action)  
                 self._remember(state, action, reward, next_state, done)         
                 self._learn()
+                self._decrement_epsilon()
                 state = next_state
                 
             returns.append(reward)
-            avg_returns = np.mean(returns[-100:])
+            avg_returns = np.mean(returns[-self.replace_freq:])
             wandb.log({"Average Returns": avg_returns})
             if episode % self.record_freq == 0 and len(regions) > 1:
                 self._log_regions(problem_instance, episode, regions, reward)
@@ -233,16 +230,18 @@ class RL(CDL):
         default_square = CDL.create_regions(valid_lines)
         start_state = self.autoencoder.get_state(default_square)
         
+        self.epsilon = self.epsilon_start
         self._populate_buffer(problem_instance, start_state)
         self._train(problem_instance, start_state)
         
         done = False
         optim_coeffs = []
+        self.epsilon = 0
         with torch.no_grad():
             num_action = 1
             state = start_state
             while not done: 
-                action = self._select_action(state, add_noise=False)
+                action = self._select_action(state)
                 optim_coeffs.append(action)
                 reward, next_state, done, regions = self._step(problem_instance, action, num_action)
                 state = next_state

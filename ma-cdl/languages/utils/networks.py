@@ -50,53 +50,19 @@ class Autoencoder(nn.Module):
             encoded = self.encoder(state)
         return encoded.flatten().numpy()
     
-
-class Actor(nn.Module):
+    
+class DuelingDQN(nn.Module):
     def __init__(self, state_dim, action_dim):
-        super(Actor, self).__init__()
+        super(DuelingDQN, self).__init__()
         self.l1 = nn.Linear(state_dim, 64)
-        self.l2 = nn.Linear(64, 32)
-        self.l3 = nn.Linear(32, action_dim)
+        self.l2 = nn.Linear(64, 64)
+        self.value = nn.Linear(64, 1)
+        self.advantage = nn.Linear(64, action_dim)
             
     def forward(self, state):
         x = F.relu(self.l1(state))
         x = F.relu(self.l2(x))
-        coefficients = torch.tanh(self.l3(x))
-        return coefficients
-    
-    
-class Critic(nn.Module):
-    def __init__(self, state_dim, action_dim):
-        super(Critic, self).__init__()
-        
-        # Q1 architecture
-        self.l1 = nn.Linear(state_dim + action_dim, 64)
-        self.l2 = nn.Linear(64, 16)
-        self.l3 = nn.Linear(16, 1)
-        
-        # Q2 architecture
-        self.l4 = nn.Linear(state_dim + action_dim, 64)
-        self.l5 = nn.Linear(64, 16)
-        self.l6 = nn.Linear(16, 1)
-        
-    def forward(self, state, action):
-        sa = torch.cat([state, action], 1)
-        
-        # Q1 architecture
-        q1 = F.relu(self.l1(sa))
-        q1 = F.relu(self.l2(q1))
-        q1 = self.l3(q1)
-        
-        # Q2 architecture
-        q2 = F.relu(self.l4(sa))
-        q2 = F.relu(self.l5(q2))
-        q2 = self.l6(q2)
-        return q1, q2
-    
-    # More efficient to only compute Q1
-    def get_Q1(self, state, action):
-        sa = torch.cat([state, action], 1)
-        q1 = F.relu(self.l1(sa))
-        q1 = F.relu(self.l2(q1))
-        q1 = self.l3(q1)
-        return q1
+        value = self.value(x)
+        advantage = self.advantage(x)
+        q_value = value + (advantage - advantage.mean())
+        return q_value

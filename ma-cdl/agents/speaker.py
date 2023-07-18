@@ -2,19 +2,19 @@ import networkx as nx
 
 from shapely import Point
 from languages.utils.cdl import CDL
-from agents.utils.a_star import a_star
 
 class Speaker:
     def __init__(self, num_agents, obstacle_radius):
-        self.agents = []
-        self.goals = []
-        self.obstacles = None
         self.num_agents = num_agents
         self.obstacle_radius = obstacle_radius
         self.languages = ['EA', 'TD3', 'Bandit']
     
     # Determine the positions of the agents, goals, and obstacles
     def gather_info(self, state):
+        self.agents = []
+        self.goals = []
+        self.obstalces = None
+        
         for idx in range(self.num_agents):
             self.agents += [state[idx*2 : idx*2+2]]
             self.goals += [state[self.num_agents*2 + idx*2 : self.num_agents*2 + idx*2 + 2]]
@@ -40,16 +40,19 @@ class Speaker:
             agent_idx = CDL.localize(agent, approach)
             goal_idx = CDL.localize(goal, approach)
             
+            safe_graph = CDL.get_safe_graph(approach, obstacles)
+            
             try:
-                directions += [a_star(agent_idx, goal_idx, obstacles, approach)]
-            except TypeError:
-                graph = CDL.create_graph(approach)
-                directions += [nx.shortest_path(graph, agent_idx, goal_idx)]
+                directions += [nx.astar_path(safe_graph, agent_idx, goal_idx)]
+            except nx.NetworkXNoPath:
+                directions += [None]
+            
+        return directions
         
     def direct_with_baseline(self, approach):
         directions = []
         
         for agent, goal in zip(self.agents, self.goals):
             directions += [approach.direct(agent, goal, self.obstacles)]
-            
+
         return directions

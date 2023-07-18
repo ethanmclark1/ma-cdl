@@ -1,10 +1,8 @@
-"""
-
-Path planning Sample Code with RRT*
-
-author: Atsushi Sakai(@Atsushi_twi)
-
-"""
+# This code is based on the following repository:
+# https://github.com/AtsushiSakai/PythonRobotics
+# Author: Atsushi Sakai (@Atsushi_twi)
+# Title: Python Robotics - Path Planning: RRTStar
+# Version: 32e5e6f
 
 import math
 import random

@@ -3,12 +3,12 @@ import networkx as nx
 
 class GridWorld:
     def __init__(self):
-        self.n_bins = (10, 10)
+        self.n_bins = (4, 4)
         self.graph = nx.grid_graph(self.n_bins, periodic=False)
         
     # Convert continuous state to discrete state
     @staticmethod
-    def discretize(state, n_bins=(10, 10), state_ranges=((-1, 1), (-1, 1))):
+    def discretize(state, n_bins=(4, 4), state_ranges=((-1, 1), (-1, 1))):
         discretized_state = []
         
         for i, val in enumerate(state):
@@ -18,7 +18,7 @@ class GridWorld:
     
     # Convert discrete state to continous state for GridWorld
     @staticmethod
-    def dequantize(discretized_state, n_bins=(10, 10), state_ranges=((-1, 1), (-1, 1))):
+    def dequantize(discretized_state, n_bins=(4, 4), state_ranges=((-1, 1), (-1, 1))):
         continuous_state = []
         
         for i, val in enumerate(discretized_state):
@@ -28,15 +28,23 @@ class GridWorld:
         return tuple(continuous_state)
 
     def direct(self, start, goal, obstacles):
-        temp_graph = self.graph.copy()
+        def euclidean_distance(node1, node2):
+            x1, y1 = node1
+            x2, y2 = node2
+            return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+
+        graph = self.graph.copy()
         
-        start = GridWorld.discretize(start)
-        goal = GridWorld.discretize(goal)
-        obstacles = set(GridWorld.discretize(obstacle) for obstacle in obstacles)
-        
-        for obstacle in obstacles:
-            if obstacle != start and obstacle != goal:
-                temp_graph.remove_node(obstacle)
-        
-        directions = nx.astar_path(temp_graph, start, goal, weight='weight')
+        start_node = GridWorld.discretize(start)
+        goal_node = GridWorld.discretize(goal)
+        obstacle_nodes = set(GridWorld.discretize(obstacle) for obstacle in obstacles)
+        obstacle_nodes.discard(start_node)
+        obstacle_nodes.discard(goal_node)
+        graph.remove_nodes_from(obstacle_nodes)
+
+        try:
+            directions = nx.astar_path(graph, start_node, goal_node, heuristic=euclidean_distance)
+        except nx.exception.NetworkXNoPath:
+            directions = None
+            
         return directions

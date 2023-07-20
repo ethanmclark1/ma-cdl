@@ -44,7 +44,7 @@ class Speaker:
             
             try:
                 directions += [nx.astar_path(safe_graph, agent_idx, goal_idx)]
-            except nx.NetworkXNoPath:
+            except (nx.NodeNotFound, nx.NetworkXNoPath):
                 directions += [None]
             
         return directions

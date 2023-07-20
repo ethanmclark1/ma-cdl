@@ -9,14 +9,13 @@ from languages.baselines.direct_path import DirectPath
 
 
 class Listener:
-    def __init__(self, num_agents, agent_radius):
-        self.languages = ['EA', 'TD3', 'Bandit']
+    def __init__(self, agent_radius, obstacle_radius):
+        self.languages = ['ea', 'rl', 'bandit']
 
-        size = 50
+        size = 30
         self.resolution = 2 / size
-        self.num_agents = num_agents
-        self.agent_radius = agent_radius
         self.graph = nx.grid_graph((size, size), periodic=False)
+        self.inflation_radius = int(round((agent_radius + obstacle_radius) / self.resolution))
 
     # Get the target position for the agent to move towards
     def _get_target(self, agent_pos, goal_pos, directions, approach, language):
@@ -54,10 +53,9 @@ class Listener:
     
     # Inflate obstacles by the size of the agent and remove them from the graph
     def _clean_graph(self, graph, obstacle_nodes, agent_node, target_node):
-        inflation_radius = int(round(self.agent_radius / self.resolution))
         inflated_obstacle_nodes = set()
         for obstacle_node in obstacle_nodes:
-            for dx, dy in itertools.product(range(-inflation_radius, inflation_radius + 1), repeat=2):
+            for dx, dy in itertools.product(range(-self.inflation_radius, self.inflation_radius + 1), repeat=2):
                 inflated_node = (obstacle_node[0] + dx, obstacle_node[1] + dy)
                 inflated_obstacle_nodes.add(inflated_node)
 

@@ -23,7 +23,7 @@ class EA(CDL):
         self.crossover_prob = 0.70
         self.population_size = 150
         self.num_generations = 150
-        self.num_elites = round(self.population_size * 0.03)
+        self.num_elites = round(self.population_size * 0.04)
         self.tournament_size = round(self.population_size * 0.05)
 
     def _init_wandb(self):
@@ -32,6 +32,7 @@ class EA(CDL):
         config.weights = self.weights
         config.configs_to_consider = self.configs_to_consider
         
+        config.num_elites = self.num_elites
         config.mutation_prob = self.mutation_prob
         config.crossover_prob = self.crossover_prob
         config.population_size = self.population_size
@@ -40,7 +41,7 @@ class EA(CDL):
         
     # Upload regions to Weights and Biases
     def _log_regions(self, problem_instance, num_lines, coeffs, cost):
-        coeffs = np.reshape(coeffs, (-1, 3))
+        coeffs = np.reshape(coeffs, (-1, self.action_dim))
         lines = CDL.get_lines_from_coeffs(coeffs)
         valid_lines = CDL.get_valid_lines(lines)
         regions = CDL.create_regions(valid_lines)
@@ -69,7 +70,7 @@ class EA(CDL):
         if hasattr(self.toolbox, 'individual'):
             self.toolbox.unregister("individual")
             self.toolbox.unregister("population")
-        self.toolbox.register("individual", tools.initRepeat, creator.Individual, self.toolbox.attr_float, n=3*num_lines)
+        self.toolbox.register("individual", tools.initRepeat, creator.Individual, self.toolbox.attr_float, n=self.action_dim*num_lines)
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
 
     def optimizer(self, coeffs, problem_instance):
@@ -162,5 +163,5 @@ class EA(CDL):
         wandb.log({"Elapsed Time": elapsed_time})
         wandb.finish()
         
-        best_coeffs = np.array(best_coeffs).reshape(-1, 3)
+        best_coeffs = np.array(best_coeffs).reshape(-1, self.action_dim)
         return best_coeffs

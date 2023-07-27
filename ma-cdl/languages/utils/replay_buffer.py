@@ -11,7 +11,7 @@ License: MIT License
 import torch
 import numpy as np
 
-class ReplayBufferRL(object):
+class ReplayBuffer(object):
     def __init__(self, state_dim, action_dim, max_size=int(1e6)):
         self.max_size = max_size
         self.ptr = 0
@@ -43,26 +43,3 @@ class ReplayBufferRL(object):
             torch.FloatTensor(self.next_state[ind]),
             torch.FloatTensor(self.not_done[ind])
             )
-        
-        
-class ReplayBufferMAB(object):
-    def __init__(self, action_dim, max_size=int(1e2)):
-        self.max_size = max_size
-        self.ptr = 0
-        self.size = 0
-        
-        self.action = np.zeros((max_size, action_dim))
-        self.reward = np.zeros((max_size, 1))
-        
-    def add(self, action, reward):
-        self.action[self.ptr] = action
-        self.reward[self.ptr] = reward
-        
-        self.ptr = (self.ptr + 1) % self.max_size
-        self.size = min(self.size + 1, self.max_size)
-    
-    def get_data(self):
-        return (
-            np.array(self.action),
-            np.array(self.reward)
-        )

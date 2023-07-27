@@ -1,6 +1,7 @@
 import copy
 import Signal8
 import numpy as np
+import matplotlib.pyplot as plt
 
 from plotter import plot_metrics
 from arguments import get_arguments
@@ -12,6 +13,7 @@ from languages.ea import EA
 from languages.rl import RL
 from languages.bandit import Bandit
 
+from languages.utils.cdl import CDL
 from languages.baselines.grid_world import GridWorld
 from languages.baselines.voronoi_map import VoronoiMap
 from languages.baselines.direct_path import DirectPath
@@ -30,38 +32,52 @@ class MA_CDL():
         
         scenario = self.env.unwrapped.scenario
         world = self.env.unwrapped.world
-        agent_radius = world.agents[0].size
-        goal_radius = world.goals[0].size
-        obstacle_radius = world.small_obstacles[0].size   
-                
+        agent_radius = world.agents[0].radius
+        goal_radius = world.goals[0].radius
+        obstacle_radius = world.small_obstacles[0].radius 
+                                
         # Context-Dependent Languages
         self.ea = EA(scenario, world)
         self.rl = RL(scenario, world)
         self.bandit = Bandit(scenario, world) 
-                
+                        
         # Baselines
         self.grid_world = GridWorld()
         self.voronoi_map = VoronoiMap()
         self.direct_path = DirectPath(agent_radius, goal_radius, obstacle_radius)
                 
         self.aerial_agent = Speaker(num_agents, obstacle_radius)
-        self.ground_agent = [Listener(agent_radius, obstacle_radius) for _ in range(num_agents)]
+        self.ground_agent = [Listener(num_agents, agent_radius) for _ in range(num_agents)]
+    
+    def test_coeffs(self, scenario, world, given_list, problem_instance):
+        cdl = CDL(scenario, world)
+        coeffs = np.array(given_list).reshape(-1, 3)
+        lines = cdl.get_lines_from_coeffs(coeffs)
+        valid_lines = cdl.get_valid_lines(lines)
+        regions = CDL.create_regions(valid_lines)
+        reward = cdl.optimizer(regions, problem_instance)
+        
+        for region in regions:
+            plt.fill(*region.exterior.xy, alpha=0.5)
+        
+        print(reward)
+        plt.show()
     
     def retrieve_languages(self, problem_instance):
-        approaches = ['ea', 'rl', 'bandit', 'grid_world', 'voronoi_map', 'direct_path']
+        approaches = ['ea', 'grid_world', 'voronoi_map', 'direct_path']
         language_set = {approach: None for approach in approaches} 
         
         for idx in range(len(approaches)):
             approach = getattr(self, approaches[idx])
             if hasattr(approach, 'get_language'):
-                language_set[approaches[idx]] = getattr(self, approaches[idx]).get_language(problem_instance)
+                language_set[approach] = getattr(self, approaches[idx]).get_language(problem_instance)
              
         return language_set
 
     def act(self, problem_instance, language_set):
-        ea = language_set['ea']
-        rl = language_set['rl']
-        bandit = language_set['bandit']
+        # ea = language_set['ea']
+        # rl = language_set['rl']
+        # bandit = language_set['bandit']
         approaches = list(language_set.keys())
         direction_length = {approach: [] for approach in approaches}
     
@@ -79,9 +95,9 @@ class MA_CDL():
             world = self.env.unwrapped.world
             backup = copy.deepcopy(world)
             
-            direction_set['ea'] = self.aerial_agent.direct(ea)
-            direction_set['rl'] = self.aerial_agent.direct(rl)
-            direction_set['bandit'] = self.aerial_agent.direct(bandit)
+            # direction_set['ea'] = self.aerial_agent.direct(ea)
+            # direction_set['rl'] = self.aerial_agent.direct(rl)
+            # direction_set['bandit'] = self.aerial_agent.direct(bandit)
             direction_set['grid_world'] = self.aerial_agent.direct(self.grid_world)
             direction_set['voronoi_map'] = self.aerial_agent.direct(self.voronoi_map)
             direction_set['direct_path'] = self.aerial_agent.direct(self.direct_path)
@@ -132,10 +148,10 @@ if __name__ == '__main__':
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
     for problem_instance in problem_instances:
         language_set = ma_cdl.retrieve_languages(problem_instance)
-        language_safety, ground_agent_success, avg_direction_length = ma_cdl.act(problem_instance, language_set)
+        # language_safety, ground_agent_success, avg_direction_length = ma_cdl.act(problem_instance, language_set)
         
-        plot_metrics(problem_instance, 
-                     language_safety=language_safety,
-                     ground_agent_success=ground_agent_success, 
-                     avg_direction_length=avg_direction_length
-                     )
+        # plot_metrics(problem_instance, 
+        #              language_safety=language_safety,
+        #              ground_agent_success=ground_agent_success, 
+        #              avg_direction_length=avg_direction_length
+        #              )

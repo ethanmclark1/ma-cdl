@@ -50,19 +50,53 @@ class Autoencoder(nn.Module):
             encoded = self.encoder(state)
         return encoded.flatten().numpy()
     
-    
-class DuelingDQN(nn.Module):
+
+class Actor(nn.Module):
     def __init__(self, state_dim, action_dim):
-        super(DuelingDQN, self).__init__()
-        self.l1 = nn.Linear(state_dim, 64)
-        self.l2 = nn.Linear(64, 64)
-        self.value = nn.Linear(64, 1)
-        self.advantage = nn.Linear(64, action_dim)
-            
+        super(Actor, self).__init__()
+        self.l1 = nn.Linear(state_dim, 128)
+        self.l2 = nn.Linear(128, 64)
+        self.l3 = nn.Linear(64, action_dim)
+
     def forward(self, state):
-        x = F.relu(self.l1(state))
-        x = F.relu(self.l2(x))
-        value = self.value(x)
-        advantage = self.advantage(x)
-        q_value = value + (advantage - advantage.mean())
-        return q_value
+        a = F.relu(self.l1(state))
+        a = F.relu(self.l2(a))
+        coefficients = torch.tanh(self.l3(a)) / 10.0
+        return coefficients
+
+
+class Critic(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(Critic, self).__init__()
+
+        # Q1 architecture
+        self.l1 = nn.Linear(state_dim + action_dim, 128)
+        self.l2 = nn.Linear(128, 64)
+        self.l3 = nn.Linear(64, 1)
+
+        # Q2 architecture
+        self.l4 = nn.Linear(state_dim + action_dim, 128)
+        self.l5 = nn.Linear(128, 64)
+        self.l6 = nn.Linear(64, 1)
+
+    def forward(self, state, u):
+        xu = torch.cat([state, u], 1)
+
+        # Q1 architecture
+        x1 = F.relu(self.l1(xu))
+        x1 = F.relu(self.l2(x1))
+        x1 = self.l3(x1)
+
+        # Q2 architecture
+        x2 = F.relu(self.l4(xu))
+        x2 = F.relu(self.l5(x2))
+        x2 = self.l6(x2)
+        return x1, x2
+
+    # More efficient to only compute Q1
+    def get_Q1(self, state, u):
+        xu = torch.cat([state, u], 1)
+        x1 = F.relu(self.l1(xu))
+        x1 = F.relu(self.l2(x1))
+        x1 = self.l3(x1)
+        return x1

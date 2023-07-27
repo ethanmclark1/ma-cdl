@@ -7,13 +7,12 @@ class Speaker:
     def __init__(self, num_agents, obstacle_radius):
         self.num_agents = num_agents
         self.obstacle_radius = obstacle_radius
-        self.languages = ['EA', 'TD3', 'Bandit']
     
     # Determine the positions of the agents, goals, and obstacles
     def gather_info(self, state):
         self.agents = []
         self.goals = []
-        self.obstalces = None
+        self.obstacles = None
         
         for idx in range(self.num_agents):
             self.agents += [state[idx*2 : idx*2+2]]

@@ -7,9 +7,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 from PIL import Image
-from rtree import index
+from statistics import mean
 from itertools import product
-from statistics import mean, variance
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -22,21 +21,19 @@ BOUNDARIES = [LineString([CORNERS[0], CORNERS[2]]),
 SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 class CDL:
+    possible_coeffs = None
     def __init__(self, scenario, world):
         self.min_lines = 1
         self.max_lines = 5
+        self.action_dim = 3
         self.world = world
         self.scenario = scenario
-        self.configs_to_consider = 50
+        self.configs_to_consider = 100
         self.rng = np.random.default_rng(seed=42)
-        self.weights = np.array([70, 100, 8, 12, 15])
-            
-        self.resolution = 0.1
-        size = int(2 / self.resolution)
-        self.graph = nx.grid_2d_graph(size, size)
         
-        self.agent_radius = world.agents[0].size
-        self.obstacle_radius = world.large_obstacles[0].size
+        self.agent_radius = world.agents[0].radius
+        self.obstacle_radius = world.large_obstacles[0].radius
+        CDL.possible_coeffs = self.create_candidate_set_of_coeffs(granularity=0.5)
     
     def _save(self, approach, problem_instance, language):
         directory = f'ma-cdl/languages/history/{approach.lower()}'
@@ -91,7 +88,27 @@ class CDL:
         plt.cla()
         plt.clf()
         plt.close('all')
+    
+    # Generate possible set of lines to choose from
+    @staticmethod
+    def create_candidate_set_of_coeffs(granularity):
+        candidate_lines = []
+        granularity = int(granularity * 100)
         
+        # vertical/horizontal lines
+        for i in range(-100 + granularity, 100, granularity):
+            i /= 1000
+            candidate_lines += [(0.1, 0, i)] # vertical lines
+            candidate_lines += [(0, 0.1, i)] # horizontal lines
+        
+        # diagonal lines
+        for i in range(-200 + granularity, 200, granularity):
+            i /= 1000
+            candidate_lines += [(0.1, 0.1, i)]
+            candidate_lines += [(-0.1, 0.1, i)]
+        
+        return candidate_lines
+            
     # Generate lines (Ax + By + C = 0) from the coefficients
     @staticmethod
     def get_lines_from_coeffs(coeffs):
@@ -134,33 +151,15 @@ class CDL:
         return valid_lines    
     
     # Create polygonal regions from lines
+    """WARNING: Changing this distance requires that distance in the safe_graph function be changed"""
     @staticmethod
-    def create_regions(valid_lines):
-        lines = MultiLineString(valid_lines).buffer(distance=1e-6)
+    def create_regions(valid_lines, distance=2e-4):
+        lines = MultiLineString(valid_lines).buffer(distance=distance)
         boundary = lines.convex_hull
         polygons = boundary.difference(lines)
         regions = [polygons] if polygons.geom_type == 'Polygon' else list(polygons.geoms)
         return regions 
     
-    # Create graph for path planning using networkx
-    @staticmethod
-    def create_graph_from_language(language):
-        graph = nx.Graph()
-        
-        for idx, region in enumerate(language):
-            centroid = region.centroid
-            graph.add_node(idx, position=(centroid.x, centroid.y))
-
-        for idx, region in enumerate(language):
-            for neighbor_idx, neighbor in enumerate(language):
-                if idx == neighbor_idx:
-                    continue
-
-                if region.touches(neighbor):
-                    graph.add_edge(idx, neighbor_idx)
-
-        return graph
-        
     # Find the region that contains the entity
     @staticmethod
     def localize(entity, language):
@@ -170,6 +169,19 @@ class CDL:
         except:
             region_idx = None
         return region_idx
+    
+    # Map coefficients to the closest possible coefficients
+    @staticmethod
+    def get_mapped_coeffs(coeffs):
+        mapped_coeffs = []
+        possible_coeffs = CDL.possible_coeffs
+        coeffs = np.reshape(coeffs, (-1, 3))
+        for coeff in coeffs:
+            distances = [np.linalg.norm(coeff - coefficients) for coefficients in possible_coeffs]
+            closest_coeffs_index = np.argmin(distances)
+            mapped_coeffs.append(CDL.possible_coeffs[closest_coeffs_index])
+        
+        return mapped_coeffs
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):
@@ -182,95 +194,75 @@ class CDL:
 
         return start, goal, obstacles
     
-    # Create RTree index to more efficiently search points
-    def _create_index(self, obstacles, regions):
-        rtree = index.Index()
-        for region_idx, region in enumerate(regions):
-            rtree.insert(region_idx, region.bounds)
+    # Create graph from language excluding regions with obstacles
+    @staticmethod
+    def get_safe_graph(regions, obstacles):
+        graph = nx.Graph()
 
-        obstacles_idx = set()
-        for obstacle in obstacles:
-            for region_idx in rtree.intersection(obstacle.bounds):
-                if regions[region_idx].intersects(obstacle):
-                    obstacles_idx.add(region_idx)
+        obstacle_regions = [idx for idx, region in enumerate(regions) if any(region.intersects(obstacle) for obstacle in obstacles)]
         
-        return obstacles_idx, rtree
+        # Add nodes to graph
+        for idx, region in enumerate(regions):
+            if idx in obstacle_regions:
+                continue
+            centroid = region.centroid
+            graph.add_node(idx, position=(centroid.x, centroid.y))
+
+        for idx, region in enumerate(regions):
+            if idx in obstacle_regions:
+                continue
+
+            for neighbor_idx, neighbor in enumerate(regions):
+                if idx == neighbor_idx or neighbor_idx in obstacle_regions:
+                    continue
+                
+                if region.dwithin(neighbor, 4.0000001e-4):
+                    graph.add_edge(idx, neighbor_idx)
+
+        return graph
         
     """
     Calculate cost of a configuration (i.e. start position, goal position, and obstacle positions)
-    with respect to the regions:
-        1. Unsafe area caused by all obstacles
-        2. Unsafe path caused by entering into obstacle regions while moving optimally from start to goal
+    with respect to the regions based on the amount of unsafe area (flexibility).
     """
     def _config_cost(self, start, goal, obstacles, regions): 
-        def discretize_position(position):
-            return tuple(map(lambda pos: int((pos + 1) / self.resolution), position))
-        
-        def dist(a, b):
-            return np.linalg.norm(np.array(a) - np.array(b))
+        def euclidean_distance(a, b):
+            return regions[a].centroid.distance(regions[b].centroid)
         
         obstacles_with_size = [Point(obs_pos).buffer(self.obstacle_radius) for obs_pos in obstacles]
-        obstacles_idx, rtree = self._create_index(obstacles_with_size, regions)
-        nonnavigable = sum(regions[idx].area for idx in obstacles_idx)
-        
-        graph = self.graph.copy()
-        start_node = discretize_position(start)
-        goal_node = discretize_position(goal)
-        obstacle_nodes = {discretize_position(obs) for obs in obstacles}
-        obstacle_nodes.discard(start_node)
-        obstacle_nodes.discard(goal_node)
-        graph.remove_nodes_from(obstacle_nodes)
+    
+        graph = CDL.get_safe_graph(regions, obstacles_with_size)
+        start_region = CDL.localize(start, regions)
+        goal_region = CDL.localize(goal, regions)
+        path = []
+        try:
+            path = nx.astar_path(graph, start_region, goal_region, heuristic=euclidean_distance)
+            safe_area = [regions[idx].area for idx in path]
+            avg_safe_area = mean(safe_area)
+        except (nx.NodeNotFound, nx.NetworkXNoPath):
+            avg_safe_area = -100
             
-        path = nx.astar_path(graph, start_node, goal_node, heuristic=dist)
-        
-        num_points_to_check = min(8, len(path))
-        indices = np.linspace(0, len(path) - 1, num_points_to_check, dtype=int)
-        sampled_points = [path[i] for i in indices]
-
-        unsafe = 0
-        for point in sampled_points:
-            continous_point = (point[0] * self.resolution - 1, point[1] * self.resolution - 1)
-            agent = Point(continous_point).buffer(self.agent_radius)
-            for region_idx in rtree.intersection(agent.bounds):
-                if regions[region_idx].intersects(agent) and region_idx in obstacles_idx:
-                    unsafe += 1
-                    break
-        
-        # Mulitply by 4 to give it equal weighting to nonnavigable area
-        scaled_unsafe = (unsafe / num_points_to_check) * 4
-        return nonnavigable, scaled_unsafe
+        return avg_safe_area
     
     """ 
     Calculate cost of a given problem (i.e. all configurations) 
-    with respect to the regions and the given positional constraints: 
-        1. Mean of nonnavigable area
-        2. Variance of nonnavigable area
-        3. Language efficiency
-        4. Mean of unsafe plans
-        5. Variance of unsafe plans
+    with respect to the regions and the given constraints: 
+        1. Mean of unsafe area
+        2. Variance of unsafe_area
     """
     def optimizer(self, regions, problem_instance):  
-        instance_cost = 4e2
+        instance_cost = -100
         
         if len(regions) > 1:
-            i = 0
-            nonnavigable, unsafe = [], []
-            while i < self.configs_to_consider:
+            safe_area = []
+            efficiency = 1 / len(regions)
+            for _ in range(self.configs_to_consider):
                 start, goal, obstacles = self._generate_configuration(problem_instance)
                 config_cost = self._config_cost(start, goal, obstacles, regions)
-                if config_cost:
-                    nonnavigable.append(config_cost[0])
-                    unsafe.append(config_cost[1])
-                    i += 1
-
-            nonnavigable_mu = mean(nonnavigable)
-            nonnavigable_var = variance(nonnavigable)
-            efficiency = len(regions)
-            unsafe_mu = mean(unsafe)
-            unsafe_var = variance(unsafe)
-            
-            criterion = np.array([nonnavigable_mu, nonnavigable_var, efficiency, unsafe_mu, unsafe_var])
-            instance_cost = np.sum(self.weights * criterion)
+                safe_area.append(config_cost)
+        
+            safe_area_mu = mean(safe_area)
+            instance_cost = safe_area_mu + efficiency
         
         return instance_cost
         
@@ -289,7 +281,7 @@ class CDL:
             lines = CDL.get_lines_from_coeffs(coeffs)
             valid_lines = CDL.get_valid_lines(lines)
             language = CDL.create_regions(valid_lines)
+            self._visualize(approach, problem_instance, language)
             self._save(approach, problem_instance, language)
         
-        self._visualize(approach, problem_instance, language)
         return language

@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+
 class Autoencoder(nn.Module):
     def __init__(self, output_dims):
         super(Autoencoder, self).__init__()
@@ -51,52 +55,31 @@ class Autoencoder(nn.Module):
         return encoded.flatten().numpy()
     
 
-class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim):
-        super(Actor, self).__init__()
-        self.l1 = nn.Linear(state_dim, 128)
-        self.l2 = nn.Linear(128, 64)
-        self.l3 = nn.Linear(64, action_dim)
+class DuelingDQN(nn.Module):
+    def __init__(self, input_dims, output_dims, learning_rate):
+        super(DuelingDQN, self).__init__()
+        self.fc1 = nn.Linear(input_dims, 128)
+        self.fc2 = nn.Linear(128, 128)
+        
+        # Advantage stream
+        self.adv_fc = nn.Linear(128, 64)
+        self.adv_out = nn.Linear(64, output_dims)   
+        
+        # Value stream
+        self.val_fc = nn.Linear(128, 32)
+        self.val_out = nn.Linear(32, 1)
+        
+        self.optim = Adam(self.parameters(), lr=learning_rate)
+        self.scheduler = ReduceLROnPlateau(self.optim, mode='min', factor=0.90, patience=200)
 
     def forward(self, state):
-        a = F.relu(self.l1(state))
-        a = F.relu(self.l2(a))
-        coefficients = torch.tanh(self.l3(a)) / 10.0
-        return coefficients
-
-
-class Critic(nn.Module):
-    def __init__(self, state_dim, action_dim):
-        super(Critic, self).__init__()
-
-        # Q1 architecture
-        self.l1 = nn.Linear(state_dim + action_dim, 128)
-        self.l2 = nn.Linear(128, 64)
-        self.l3 = nn.Linear(64, 1)
-
-        # Q2 architecture
-        self.l4 = nn.Linear(state_dim + action_dim, 128)
-        self.l5 = nn.Linear(128, 64)
-        self.l6 = nn.Linear(64, 1)
-
-    def forward(self, state, u):
-        xu = torch.cat([state, u], 1)
-
-        # Q1 architecture
-        x1 = F.relu(self.l1(xu))
-        x1 = F.relu(self.l2(x1))
-        x1 = self.l3(x1)
-
-        # Q2 architecture
-        x2 = F.relu(self.l4(xu))
-        x2 = F.relu(self.l5(x2))
-        x2 = self.l6(x2)
-        return x1, x2
-
-    # More efficient to only compute Q1
-    def get_Q1(self, state, u):
-        xu = torch.cat([state, u], 1)
-        x1 = F.relu(self.l1(xu))
-        x1 = F.relu(self.l2(x1))
-        x1 = self.l3(x1)
-        return x1
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.fc2(x))
+        
+        adv = F.relu(self.adv_fc(x))
+        adv = self.adv_out(adv)
+        
+        val = F.relu(self.val_fc(x))
+        val = self.val_out(val)
+        
+        return val + adv - adv.mean()

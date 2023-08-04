@@ -26,6 +26,7 @@ class CDL:
         self.min_lines = 1
         self.max_lines = 5
         self.action_dim = 3
+        self.granularity = 0.2
         self.world = world
         self.scenario = scenario
         self.configs_to_consider = 100
@@ -33,7 +34,7 @@ class CDL:
         
         self.agent_radius = world.agents[0].radius
         self.obstacle_radius = world.large_obstacles[0].radius
-        CDL.possible_coeffs = self.create_candidate_set_of_coeffs(granularity=0.5)
+        CDL.possible_coeffs = self.create_candidate_set_of_coeffs(granularity=self.granularity)
     
     def _save(self, approach, problem_instance, language):
         directory = f'ma-cdl/languages/history/{approach.lower()}'
@@ -240,7 +241,7 @@ class CDL:
             safe_area = [regions[idx].area for idx in path]
             avg_safe_area = mean(safe_area)
         except (nx.NodeNotFound, nx.NetworkXNoPath):
-            avg_safe_area = -100
+            avg_safe_area = -6
             
         return avg_safe_area
     
@@ -251,18 +252,18 @@ class CDL:
         2. Variance of unsafe_area
     """
     def optimizer(self, regions, problem_instance):  
-        instance_cost = -100
+        instance_cost = -8
         
         if len(regions) > 1:
             safe_area = []
-            efficiency = 1 / len(regions)
+            efficiency = len(regions) * 0.175
             for _ in range(self.configs_to_consider):
                 start, goal, obstacles = self._generate_configuration(problem_instance)
                 config_cost = self._config_cost(start, goal, obstacles, regions)
                 safe_area.append(config_cost)
         
             safe_area_mu = mean(safe_area)
-            instance_cost = safe_area_mu + efficiency
+            instance_cost = safe_area_mu - efficiency
         
         return instance_cost
         
@@ -273,7 +274,7 @@ class CDL:
     def get_language(self, problem_instance):
         approach = self.__class__.__name__
         try:
-            language = self._load(approach, problem_instance)
+            language = self._load(approach, 'cheese')
         except FileNotFoundError:
             print(f'No stored {approach} language for {problem_instance} problem instance.')
             print('Generating new language...\n')

@@ -89,7 +89,8 @@ class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, lr):
         super(Actor, self).__init__()
         self.l1 = nn.Linear(state_dim, 128)
-        self.l2 = nn.Linear(128, 32)
+        self.l2 = nn.Linear(128, 128)
+        self.l3 = nn.Linear(128, 32)
         self.l4 = nn.Linear(32, action_dim)
         
         self.optim = Adam(self.parameters(), lr=lr)
@@ -97,8 +98,9 @@ class Actor(nn.Module):
     def forward(self, state):
         a = F.relu(self.l1(state))
         a = F.relu(self.l2(a))
-        coefficients = torch.tanh(self.l3(a))
-        return coefficients
+        a = F.relu(self.l3(a))
+        a = torch.tanh(self.l4(a))
+        return a
 
 
 class Critic(nn.Module):
@@ -107,18 +109,18 @@ class Critic(nn.Module):
 
         # Q1 architecture
         self.l1 = nn.Linear(state_dim + action_dim, 128)
-        self.l2 = nn.Linear(128, 64)
-        self.l3 = nn.Linear(64, 1)
+        self.l2 = nn.Linear(128, 32)
+        self.l3 = nn.Linear(32, 1)
 
         # Q2 architecture
         self.l4 = nn.Linear(state_dim + action_dim, 128)
-        self.l5 = nn.Linear(128, 64)
-        self.l6 = nn.Linear(64, 1)
+        self.l5 = nn.Linear(128, 32)
+        self.l6 = nn.Linear(32, 1)
         
         self.optim = Adam(self.parameters(), lr=lr)
 
-    def forward(self, state, u):
-        xu = torch.cat([state, u], 1)
+    def forward(self, state, action):
+        xu = torch.cat([state, action], 1)
 
         # Q1 architecture
         x1 = F.relu(self.l1(xu))
@@ -132,8 +134,8 @@ class Critic(nn.Module):
         return x1, x2
 
     # More efficient to only compute Q1
-    def get_Q1(self, state, u):
-        xu = torch.cat([state, u], 1)
+    def get_Q1(self, state, action):
+        xu = torch.cat([state, action], 1)
         x1 = F.relu(self.l1(xu))
         x1 = F.relu(self.l2(x1))
         x1 = self.l3(x1)

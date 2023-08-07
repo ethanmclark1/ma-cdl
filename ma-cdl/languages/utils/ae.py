@@ -179,8 +179,10 @@ class ImageDataset(Dataset):
         self.max_lines = max_lines
         
         if action_set is not None:
+            self.name = 'discrete'
             self.action_selection = partial(self.rng.choice, a=action_set)
         else:
+            self.name = 'continuous'
             self.action_selection = partial(self.rng.uniform, low=-1, high=1, size=3)
         
         try:
@@ -196,7 +198,7 @@ class ImageDataset(Dataset):
 
     def load_images(self):
         images = []
-        image_folder = 'ma-cdl/languages/history/images'
+        image_folder = f'ma-cdl/languages/history/images/{self.name}'
         image_files = sorted(os.listdir(image_folder))
 
         for image_file in image_files:
@@ -211,7 +213,7 @@ class ImageDataset(Dataset):
         return images
 
     def save_image(self, img, idx):
-        save_path = 'ma-cdl/languages/history/images'
+        save_path = f'ma-cdl/languages/history/images/{self.name}'
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         img_path = os.path.join(save_path, f'image_{idx}.png')

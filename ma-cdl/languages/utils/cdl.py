@@ -22,7 +22,7 @@ BOUNDARIES = [LineString([CORNERS[0], CORNERS[2]]),
               LineString([CORNERS[1], CORNERS[0]])]
 SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
-# Abstract base class for both CDL approaches (DuelingDDQN and TD3)
+# Abstract base class for context-dependent language approaches (DuelingDDQN and TD3)
 class CDL(ABC):
     def __init__(self, scenario, world):
         self.min_lines = 1
@@ -35,7 +35,6 @@ class CDL(ABC):
         self.buffer = None
         self.state_dim = 128
         
-        self.agent_radius = world.agents[0].radius
         self.obstacle_radius = world.large_obstacles[0].radius
     
     def _save(self, approach, problem_instance, language):
@@ -61,7 +60,7 @@ class CDL(ABC):
         config = wandb.config
         return config
     
-    # Upload regions to WandB
+    # Log regions to WandB
     def _log_regions(self, problem_instance, title_name, title_data, regions, reward):
         _, ax = plt.subplots()
         problem_instance = problem_instance.capitalize()
@@ -97,13 +96,13 @@ class CDL(ABC):
         plt.clf()
         plt.close('all')
             
-    # Generate lines (Ax + By + C = 0) from the coefficients
+    # Generate shapely linestring (startpoint & endpoint) from standard form of line (Ax + By + C = 0)
     @staticmethod
-    def get_shapely_linestring(coeffs):
+    def get_shapely_linestring(lines):
         linestrings = []
-        equations = np.reshape(coeffs, (-1, 3))
-        for equation in equations:
-            a, b, c = equation
+        lines = np.reshape(lines, (-1, 3))
+        for line in lines:
+            a, b, c = line
             
             if a == 0 and b == 0 and c == 0: # Terminal line
                 break
@@ -199,10 +198,14 @@ class CDL(ABC):
         return graph
     
     @abstractmethod
+    def _decrement_exploration(self):
+        raise NotImplementedError
+    
+    @abstractmethod
     def _select_action(self, state):
         raise NotImplementedError
     
-    # Populate replay buffer with dummy transitions
+    # Populate buffer with dummy transitions
     def _populate_buffer(self, problem_instance, start_state):
         name = self.__class__.__name__
         
@@ -217,21 +220,20 @@ class CDL(ABC):
                 self.buffer.add((state, action, reward, next_state, done))
                 state = next_state
     
-    # Overlay lines in the environment
-    def step(self, problem_instance, action, num_lines):
+    # Overlay new line in the environment
+    def _step(self, problem_instance, line, num_lines):
         reward = 0
         done = False
         prev_num_lines = max(len(self.valid_lines), 4)
         
-        coeffs = self.possible_coeffs[action]
-        line = CDL.get_lines_from_coeffs(coeffs)
-        valid_lines = CDL.get_valid_lines(line)
+        linestring = CDL.get_shapely_linestring(line)
+        valid_lines = CDL.get_valid_lines(linestring)
         self.valid_lines.update(valid_lines)
         regions = CDL.create_regions(list(self.valid_lines))
         
         if len(self.valid_lines) == prev_num_lines or num_lines == self.max_lines:
             done = True
-            reward = super().optimizer(regions, problem_instance)
+            reward = self.optimizer(regions, problem_instance)
             self.valid_lines.clear()
         
         next_state = self.autoencoder.get_state(regions)
@@ -303,13 +305,14 @@ class CDL(ABC):
             while not done:
                 num_lines += 1
                 action = self._select_action(state)
-                reward, next_state, done, regions = super().step(problem_instance, action, num_lines)
+                reward, next_state, done, regions = self._step(problem_instance, action, num_lines)
                 self.buffer.add((state, action, reward, next_state, done))
                 policy_loss, value_loss, td_error, tree_idxs = self._learn()
                 state = next_state
                 action_lst.append(action)
 
             self.buffer.update_priorities(tree_idxs, td_error)
+            self._decrement_exploration()
 
             value_losses.append(value_loss)
             returns.append(reward)
@@ -320,7 +323,7 @@ class CDL(ABC):
             if episode % self.record_freq == 0 and len(regions) > 1:
                 self._log_regions(problem_instance, episode, regions, reward)
             
-            # Log policy loss if applicable (TD3)
+            # Log policy loss if applicable
             if policy_loss is not None:
                 policy_losses.append(policy_loss)
                 avg_policy_losses = np.mean(policy_losses[-100:])
@@ -355,7 +358,7 @@ class CDL(ABC):
     def get_language(self, problem_instance):
         approach = self.__class__.__name__
         try:
-            language = self._load(approach, 'cheese')
+            language = self._load(approach, problem_instance)
         except FileNotFoundError:
             print(f'No stored {approach} language for {problem_instance} problem instance.')
             print('Generating new language...\n')

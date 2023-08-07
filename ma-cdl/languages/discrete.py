@@ -6,8 +6,8 @@ from languages.utils.cdl import CDL
 from languages.utils.networks import DuelingDQN
 from languages.utils.replay_buffer import PrioritizedReplayBuffer
 
-"""Using Dueling DDQN with Prioritized Experience Replay for discrete language"""
-class DuelingDDQN(CDL):
+"""Using Dueling DDQN with Prioritized Experience Replay"""
+class Discrete(CDL):
     def __init__(self, scenario, world):
         super().__init__(scenario, world)     
            
@@ -20,16 +20,16 @@ class DuelingDDQN(CDL):
     def _init_hyperparams(self):
         num_records = 10
         
-        self.tau = 0.003
+        self.tau = 3e-3
         self.alpha = 7e-4
-        self.gamma = 0.9999
+        self.gamma = 0.999
         self.batch_size = 512
         self.granularity = 0.20
-        self.memory_size = 25000
+        self.memory_size = 30000
         self.epsilon_start = 1.0
         self.dummy_episodes = 200
-        self.num_episodes = 20000
-        self.epsilon_decay = 0.9998
+        self.num_episodes = 15000
+        self.epsilon_decay = 0.9997
         self.record_freq = self.num_episodes // num_records
             
     def _init_wandb(self, problem_instance):
@@ -45,7 +45,7 @@ class DuelingDDQN(CDL):
         config.epsilon_decay = self.epsilon_decay
         config.dummy_episodes = self.dummy_episodes
         
-    def _decay_epsilon(self):
+    def _decrement_exploration(self):
         self.epsilon *= self.epsilon_decay
         self.epsilon = max(0.01, self.epsilon)
         

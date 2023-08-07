@@ -11,8 +11,8 @@ from languages.utils.cdl import CDL
 from languages.utils.networks import Actor, Critic
 from languages.utils.replay_buffer import PrioritizedReplayBuffer
 
-"""Using Twin-Delayed Deep Deterministic Policy Gradient (TD3) with Prioritized Experience Replay for continuous language"""
-class TD3(CDL):
+"""Using Twin-Delayed Deep Deterministic Policy Gradient (TD3) with Prioritized Experience Replay"""
+class Continuous(CDL):
     def __init__(self, scenario, world):
         super().__init__(scenario, world)
         self.action_dim = 3
@@ -29,9 +29,9 @@ class TD3(CDL):
     def _init_hyperparams(self):
         num_records = 10
         
-        self.tau = 0.003
+        self.tau = 3e-3
         self.alpha = 7e-4
-        self.gamma = 0.9999
+        self.gamma = 0.999
         self.policy_freq = 2
         self.noise_clip = 0.5
         self.batch_size = 512
@@ -39,7 +39,7 @@ class TD3(CDL):
         self.dummy_episodes = 200
         self.num_episodes = 20000
         self.exploration_noise_start = 0.2
-        self.exploration_noise_decay = 0.9998
+        self.exploration_noise_decay = 0.9999
         self.record_freq = self.num_episodes // num_records
         
     def _init_wandb(self, problem_instance):
@@ -53,10 +53,10 @@ class TD3(CDL):
         config.policy_noise = self.policy_noise
         config.num_episodes = self.num_episodes
         config.dummy_episodes = self.dummy_episodes
-        config.exploration_noise = self.exploration_noise
+        config.exploration_noise = self.exploration_noise_start
         config.exploration_noise_decay = self.exploration_noise_decay
         
-    def _decay_exploration_noise(self):
+    def _decrement_exploration(self):
         self.exploration_noise *= self.exploration_noise_decay
         self.exploration_noise = min(0.01, self.exploration_noise)
         
@@ -131,4 +131,3 @@ class TD3(CDL):
         optim_lines = super()._generate_optimal_lines(problem_instance)
         
         return optim_lines
-        

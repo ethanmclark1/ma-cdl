@@ -1,5 +1,5 @@
 from scipy.spatial import cKDTree
-from languages.utils.rrt_star import RRTStar
+from baselines.utils.rrt_star import RRTStar
 
 class DirectPath:
     tree = None

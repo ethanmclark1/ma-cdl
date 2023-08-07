@@ -6,25 +6,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from PIL import Image
+from functools import partial
+
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import Dataset, DataLoader, random_split
+
 from languages.utils.cdl import CDL
 from languages.utils.networks import Autoencoder
-from torch.utils.data import Dataset, DataLoader, random_split
 
 IMAGE_SIZE = (64, 64)
 
 
 class AE:
-    def __init__(self, output_dims, rng, max_lines):
+    def __init__(self, output_dims, rng, max_lines, action_set=None):
         self.model = Autoencoder(output_dims)
+        self.name = f'Discrete{self.__class__.__name__}' if action_set is not None else f'Continuous{self.__class__.__name__}'
+        
         try:
-            state_dict = torch.load('ma-cdl/languages/history/AE.pth')
+            state_dict = torch.load(f'ma-cdl/languages/history/{self.name}.pth')
             self.model.load_state_dict(state_dict)
         except:
             self._init_hyperparams()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, self.num_train_epochs, max_lines)
+            self.dataset = ImageDataset(rng, self.num_train_epochs, max_lines, action_set)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
             self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
             self._train()
@@ -36,14 +41,14 @@ class AE:
         self.num_train_epochs = 1000
 
     def _init_wandb(self):
-        wandb.init(project='ma-cdl', entity='ethanmclark1', name='Autoencoder')
+        wandb.init(project='ma-cdl', entity='ethanmclark1', name=f'{self.name}')
         config = wandb.config
         config.learning_rate = self.learning_rate
         config.num_train_epochs = self.num_train_epochs
 
     def _save_model(self):
         directory = 'ma-cdl/languages/history'
-        filename = f'{self.__class__.__name__}.pth'
+        filename = f'{self.name}.pth'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -168,10 +173,16 @@ class AE:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, rng, num_episodes, max_lines):
+    def __init__(self, rng, num_episodes, max_lines, action_set):
         self.rng = rng
         self.num_episodes = num_episodes
         self.max_lines = max_lines
+        
+        if action_set is not None:
+            self.action_selection = partial(self.rng.choice, a=action_set)
+        else:
+            self.action_selection = partial(self.rng.uniform, low=-1, high=1, size=3)
+        
         try:
             self.images = self.load_images()
         except:
@@ -216,10 +227,9 @@ class ImageDataset(Dataset):
             prev_num_lines = 4
             valid_lines = set()
             while not done:
-                action = self.rng.uniform(-0.1, 0.1, 3)
-                mapped_coeffs = CDL.get_mapped_coeffs(action)
-                line = CDL.get_lines_from_coeffs(mapped_coeffs)
-                valid = CDL.get_valid_lines(line)
+                line = self.action_selection()
+                linestring = CDL.get_shapely_linestring(line)
+                valid = CDL.get_valid_lines(linestring)
                 valid_lines.update(valid)
                 regions = CDL.create_regions(list(valid_lines))
                 pixel_tensor = AE.pixelate(regions)

@@ -27,6 +27,14 @@ def get_arguments():
         )
     
     parser.add_argument(
+        '--action_space',
+        type=str,
+        default='discrete',
+        choices=['discrete', 'continuous'],
+        help='Action space of agents {default_val: discrete, choices: [%(choices)s]}'
+    )
+    
+    parser.add_argument(
         '--render_mode', 
         type=str, 
         default='None', 
@@ -36,4 +44,4 @@ def get_arguments():
     
     args = parser.parse_args()
         
-    return args.num_agents, args.num_large_obstacles, args.num_small_obstacles, args.render_mode
+    return args.num_agents, args.num_large_obstacles, args.num_small_obstacles, args.action_space, args.render_mode

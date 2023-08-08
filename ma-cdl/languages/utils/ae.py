@@ -198,7 +198,7 @@ class ImageDataset(Dataset):
 
     def load_images(self):
         images = []
-        image_folder = f'ma-cdl/languages/history/images/{self.name}'
+        image_folder = f'languages/history/images/{self.name}'
         image_files = sorted(os.listdir(image_folder))
 
         for image_file in image_files:
@@ -213,7 +213,7 @@ class ImageDataset(Dataset):
         return images
 
     def save_image(self, img, idx):
-        save_path = f'ma-cdl/languages/history/images/{self.name}'
+        save_path = f'languages/history/images/{self.name}'
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         img_path = os.path.join(save_path, f'image_{idx}.png')

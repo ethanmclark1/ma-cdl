@@ -73,9 +73,7 @@ class DuelingDQN(nn.Module):
     def forward(self, state):
         x = F.relu(self.fc1(state))
         x = F.relu(self.fc2(x))
-        
-        x = self.dropout(x)
-        
+                
         adv = F.relu(self.adv_fc(x))
         adv = self.adv_out(adv)
         

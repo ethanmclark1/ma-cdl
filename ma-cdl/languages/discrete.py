@@ -82,7 +82,7 @@ class Discrete(CDL):
             
     def _step(self, problem_instance, action, num_lines):
         line = self.candidate_lines[action]
-        reward, next_state, done, _ = super().step(problem_instance, line, num_lines)
+        reward, next_state, done, _ = super()._step(problem_instance, line, num_lines)
         return reward, next_state, done, _
     
     # Learn from the replay buffer following the DDQN algorithm
@@ -122,7 +122,7 @@ class Discrete(CDL):
     def _generate_optimal_lines(self, problem_instance):        
         # Start from a blank slate every time
         self.epsilon = self.epsilon_start
-        self.buffer = PrioritizedReplayBuffer(self.state_dim, self.memory_size)
+        self.buffer = PrioritizedReplayBuffer(self.state_dim, 1, self.memory_size)
         self.dqn = DuelingDQN(self.state_dim, self.num_actions, self.alpha)
         self.target_dqn = copy.deepcopy(self.dqn)
         

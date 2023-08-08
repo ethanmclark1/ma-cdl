@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 from PIL import Image
 from statistics import mean
+from functools import partial
 from itertools import product
 from abc import ABC, abstractmethod
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
@@ -34,6 +35,7 @@ class CDL(ABC):
         
         self.buffer = None
         self.state_dim = 128
+        self.valid_lines = set()
         
         self.obstacle_radius = world.large_obstacles[0].radius
     
@@ -208,6 +210,10 @@ class CDL(ABC):
     # Populate buffer with dummy transitions
     def _populate_buffer(self, problem_instance, start_state):
         name = self.__class__.__name__
+        if name == 'Discrete':
+            action_selection = partial(self.rng.choice, self.num_actions)
+        else:
+            action_selection = partial(self.rng.uniform, -1, 1, self.action_dim)
         
         for _ in range(self.dummy_episodes):
             done = False
@@ -215,7 +221,7 @@ class CDL(ABC):
             state = start_state
             while not done:
                 num_lines += 1
-                action = self.rng.choice(self.num_actions) if name == 'DuelingDDQN' else self.rng.uniform(-1, 1, self.action_dim)
+                action = action_selection()
                 reward, next_state, done, _ = self._step(problem_instance, action, num_lines)
                 self.buffer.add((state, action, reward, next_state, done))
                 state = next_state
@@ -321,8 +327,8 @@ class CDL(ABC):
             wandb.log({"Average Value Loss": avg_value_losses})
             wandb.log({"Average Returns": avg_returns})
             if episode % self.record_freq == 0 and len(regions) > 1:
-                self._log_regions(problem_instance, episode, regions, reward)
-            
+                self._log_regions(problem_instance, 'Episode', episode, regions, reward)
+                            
             # Log policy loss if applicable
             if policy_loss is not None:
                 policy_losses.append(policy_loss)
@@ -346,7 +352,8 @@ class CDL(ABC):
         self._populate_buffer(problem_instance, start_state)
         best_lines, best_regions, best_reward = self._train(problem_instance, start_state)
         
-        self._log_regions(problem_instance, 'Final', best_regions, best_reward)
+        best_lines = list(map(lambda x: self.candidate_lines[x], best_lines))
+        self._log_regions(problem_instance, 'Episode', 'Final', best_regions, best_reward)
         wandb.log({"Final Reward": best_reward})
         wandb.log({"Final Lines": best_lines})
         wandb.finish()  

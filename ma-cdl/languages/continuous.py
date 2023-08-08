@@ -35,10 +35,11 @@ class Continuous(CDL):
         self.policy_freq = 2
         self.noise_clip = 0.5
         self.batch_size = 512
-        self.policy_noise = 0.2
+        self.memory_size = 30000
+        self.policy_noise = 0.25
         self.dummy_episodes = 200
-        self.num_episodes = 20000
-        self.exploration_noise_start = 0.2
+        self.num_episodes = 15000
+        self.exploration_noise_start = 0.25
         self.exploration_noise_decay = 0.9999
         self.record_freq = self.num_episodes // num_records
         
@@ -49,6 +50,7 @@ class Continuous(CDL):
         config.gamma = self.gamma 
         config.batch_size = self.batch_size
         config.noise_clip = self.noise_clip
+        config.memory_size = self.memory_size
         config.policy_freq = self.policy_freq
         config.policy_noise = self.policy_noise
         config.num_episodes = self.num_episodes
@@ -77,6 +79,9 @@ class Continuous(CDL):
         
         batch, weights, tree_idxs = self.buffer.sample(self.batch_size)
         state, action, reward, next_state, done = batch
+        
+        reward = reward.view(-1, 1)
+        done = done.view(-1, 1)
         
         with torch.no_grad():
             noise = (torch.randn_like(action) * self.policy_noise).clamp(-self.noise_clip, self.noise_clip)
@@ -114,15 +119,16 @@ class Continuous(CDL):
                 target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
             for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
                 target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-                
-        return actor_loss, critic_loss.item(), td_error.numpy(), tree_idxs
+        
+        td_error = td_error.view(1, -1).squeeze().numpy()
+        return actor_loss, critic_loss.item(), td_error, tree_idxs
     
     # Retrieve optimal set lines for a given problem instance from the training
     def _generate_optimal_lines(self, problem_instance):        
         # Start from a blank slate every time
         self.total_it = 0
         self.exploration_noise = self.exploration_noise_start
-        self.buffer = PrioritizedReplayBuffer(self.state_dim, self.action_dim)
+        self.buffer = PrioritizedReplayBuffer(self.state_dim, self.action_dim, self.memory_size)
         self.actor = Actor(self.state_dim, self.action_dim, self.alpha)
         self.actor_target = copy.deepcopy(self.actor)
         self.critic = Critic(self.state_dim, self.action_dim, self.alpha)

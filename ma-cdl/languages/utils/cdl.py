@@ -36,6 +36,7 @@ class CDL(ABC):
         self.buffer = None
         self.state_dim = 128
         self.valid_lines = set()
+        self.name = self.__class__.__name__
         
         self.obstacle_radius = world.large_obstacles[0].radius
     
@@ -352,7 +353,8 @@ class CDL(ABC):
         self._populate_buffer(problem_instance, start_state)
         best_lines, best_regions, best_reward = self._train(problem_instance, start_state)
         
-        best_lines = list(map(lambda x: self.candidate_lines[x], best_lines))
+        if self.name == 'Discrete':
+            best_lines = list(map(lambda x: self.candidate_lines[x], best_lines))
         self._log_regions(problem_instance, 'Episode', 'Final', best_regions, best_reward)
         wandb.log({"Final Reward": best_reward})
         wandb.log({"Final Lines": best_lines})

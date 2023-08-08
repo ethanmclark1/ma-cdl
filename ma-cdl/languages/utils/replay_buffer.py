@@ -11,7 +11,7 @@ from languages.utils.sumtree import SumTree
 
 
 class PrioritizedReplayBuffer:
-    def __init__(self, state_size, buffer_size, epsilon=1e-2, alpha=0.1, beta=0.1, beta_increment=1e-3):
+    def __init__(self, state_size, action_size, buffer_size, epsilon=1e-2, alpha=0.1, beta=0.1, beta_increment=1e-3):
         self.tree = SumTree(size=buffer_size)
 
         # Degree of prioritization
@@ -26,7 +26,7 @@ class PrioritizedReplayBuffer:
         self.max_priority = epsilon
 
         self.state = torch.empty(buffer_size, state_size, dtype=torch.float)
-        self.action = torch.empty(buffer_size, 1, dtype=torch.float)
+        self.action = torch.empty(buffer_size, action_size, dtype=torch.float)
         self.reward = torch.empty(buffer_size, dtype=torch.float)
         self.next_state = torch.empty(buffer_size, state_size, dtype=torch.float)
         self.done = torch.empty(buffer_size, dtype=torch.int)

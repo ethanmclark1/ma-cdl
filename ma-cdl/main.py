@@ -133,5 +133,5 @@ if __name__ == '__main__':
             'ground_agent_success': ground_agent_success,
             'avg_direction_length': avg_direction_length
         })
-
+ 
     plot_metrics(problem_instances, all_metrics)

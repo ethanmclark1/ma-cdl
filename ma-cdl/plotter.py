@@ -1,33 +1,43 @@
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 
 def plot_metrics(problem_instances, all_metrics):
     metric_names = list(all_metrics[0].keys())
-    num_approaches = 4
-    approaches = ['RL', 'Grid World', 'Voronoi Map', 'Direct Path']
-    
+    approaches = ['rl', 'grid_world', 'voronoi_map', 'direct_path']
+    num_approaches = len(approaches)
+
     for metric_name in metric_names:
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 10))
         fig.suptitle(f'{metric_name}')
-        width = 0.15
-        
+
+        # Loop through problem instances and plot the metric data
         for idx, problem_instance in enumerate(problem_instances):
+            ax = axes.flatten()[idx]
             metrics = all_metrics[idx][metric_name]
+
             rl = metrics[approaches[0]]
             grid_world = metrics[approaches[1]]
             voronoi_map = metrics[approaches[2]]
             direct_path = metrics[approaches[3]]
             
-            x_values = np.arange(num_approaches) + (idx * num_approaches * width * 2)
-            ax.bar(x_values - width, rl, width=width, label=f'{problem_instance} - RL')
-            ax.bar(x_values, grid_world, width=width, label=f'{problem_instance} - Grid World')
-            ax.bar(x_values + width, voronoi_map, width=width, label=f'{problem_instance} - Voronoi Map')
-            ax.bar(x_values + 2 * width, direct_path, width=width, label=f'{problem_instance} - Direct Path')
-        
-        ax.set_xlabel('Approaches')
-        ax.set_ylabel(metric_name)
-        ax.set_xticks(np.arange(num_approaches) + (len(problem_instances) - 1) * num_approaches * width)
-        ax.set_xticklabels(approaches)
-        ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
-        plt.tight_layout()
+            max_value = max(rl, grid_world, voronoi_map, direct_path)
+            y_limit = math.ceil(max_value / 10) * 10
+            if y_limit == 0:
+                y_limit = 10
+
+            x_values = np.arange(num_approaches)
+
+            ax.bar(x_values[0], rl, width=0.2, label='RL')
+            ax.bar(x_values[1], grid_world, width=0.2, label='Grid World')
+            ax.bar(x_values[2], voronoi_map, width=0.2, label='Voronoi Map')
+            ax.bar(x_values[3], direct_path, width=0.2, label='Direct Path')
+            ax.set_xlabel(problem_instance)
+            ax.set_ylabel(metric_name)
+            ax.set_xticks(x_values)
+            ax.set_xticklabels(approaches)
+            ax.set_ylim(0, y_limit)
+            ax.legend(loc='best')
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         fig.savefig(f'results/{metric_name}.png')

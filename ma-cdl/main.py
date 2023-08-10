@@ -47,10 +47,10 @@ class MA_CDL():
         approaches = ['rl', 'grid_world', 'voronoi_map', 'direct_path']
         language_set = {approach: None for approach in approaches} 
         
-        for idx in range(len(approaches)):
+        for idx, name in enumerate(approaches):
             approach = getattr(self, approaches[idx])
             if hasattr(approach, 'get_language'):
-                language_set[approach] = getattr(self, approaches[idx]).get_language(problem_instance)
+                language_set[name] = getattr(self, approaches[idx]).get_language(problem_instance)
              
         return language_set
 
@@ -119,15 +119,19 @@ class MA_CDL():
 
 if __name__ == '__main__':
     num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode = get_arguments()
-    ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
-        
+    ma_cdl = MA_CDL(num_agents, num_large_obstacles,
+                    num_small_obstacles, action_space, render_mode)
+
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
+    all_metrics = []
     for problem_instance in problem_instances:
         language_set = ma_cdl.retrieve_languages(problem_instance)
-        # language_safety, ground_agent_success, avg_direction_length = ma_cdl.act(problem_instance, language_set)
-        
-        # plot_metrics(problem_instance, 
-        #              language_safety=language_safety,
-        #              ground_agent_success=ground_agent_success, 
-        #              avg_direction_length=avg_direction_length
-        #              )
+        language_safety, ground_agent_success, avg_direction_length = ma_cdl.act(problem_instance, language_set)
+
+        all_metrics.append({
+            'language_safety': language_safety,
+            'ground_agent_success': ground_agent_success,
+            'avg_direction_length': avg_direction_length
+        })
+
+    plot_metrics(problem_instances, all_metrics)

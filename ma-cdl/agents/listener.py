@@ -1,6 +1,7 @@
 import itertools
 import numpy as np
 import networkx as nx
+import matplotlib.pyplot as plt
 
 from languages.utils.cdl import CDL
 from languages.baselines.grid_world import GridWorld
@@ -10,8 +11,6 @@ from languages.baselines.direct_path import DirectPath
 
 class Listener:
     def __init__(self, agent_radius, obstacle_radius):
-        self.languages = ['ea', 'rl', 'bandit']
-
         size = 30
         self.resolution = 2 / size
         self.graph = nx.grid_graph((size, size), periodic=False)
@@ -20,7 +19,7 @@ class Listener:
     # Get the target position for the agent to move towards
     def _get_target(self, agent_pos, goal_pos, directions, approach, language):
         # Get agent region from language
-        if approach in self.languages:
+        if approach == 'rl':
             agent_region = CDL.localize(agent_pos, language)
         elif approach == 'voronoi_map':
             agent_region = CDL.localize(agent_pos, VoronoiMap.regions)
@@ -29,11 +28,12 @@ class Listener:
 
         try:
             target_region = directions[directions.index(agent_region) + 1]
-            if approach in self.languages:
-                target_pos = language[target_region].centroid
+            if approach == 'rl':
+                centroid = language[target_region].centroid
+                target_pos = np.array([centroid.x, centroid.y])
             elif approach == 'voronoi_map':
-                target_pos = VoronoiMap.regions[target_region].centroid
-                target_pos = [*target_pos.coords][0]
+                centroid = VoronoiMap.regions[target_region].centroid
+                target_pos = np.array([centroid.x, centroid.y])
             elif approach == 'grid_world':
                 target_pos = GridWorld.dequantize(target_region)
         except UnboundLocalError:
@@ -81,6 +81,7 @@ class Listener:
         agent_node = tuple(map(round, ((np.array(agent_pos) + 1) / self.resolution)))
         target_node = tuple(map(round, ((np.array(target_pos) + 1) / self.resolution)))
         obstacle_nodes = set(tuple(map(round, ((np.array(obstacle) + 1) / self.resolution))) for obstacle in obstacles)
+
         graph = self._clean_graph(graph, obstacle_nodes, agent_node, target_node)
         
         try:

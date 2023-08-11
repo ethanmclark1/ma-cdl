@@ -88,16 +88,14 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.l1 = nn.Linear(state_dim, 128)
         self.l2 = nn.Linear(128, 128)
-        self.l3 = nn.Linear(128, 32)
-        self.l4 = nn.Linear(32, action_dim)
+        self.l3 = nn.Linear(128, action_dim)
         
         self.optim = Adam(self.parameters(), lr=lr)
 
     def forward(self, state):
         a = F.relu(self.l1(state))
         a = F.relu(self.l2(a))
-        a = F.relu(self.l3(a))
-        a = torch.tanh(self.l4(a))
+        a = torch.tanh(self.l3(a))
         return a
 
 

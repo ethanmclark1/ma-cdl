@@ -136,5 +136,4 @@ ma-cdl.code-workspace
 /.vscode
 
 # Results from running the code
-results
 ground_truth.txt

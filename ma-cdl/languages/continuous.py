@@ -29,29 +29,31 @@ class Continuous(CDL):
     def _init_hyperparams(self):
         num_records = 10
         
-        self.tau = 3e-3
-        self.alpha = 7e-4
-        self.gamma = 0.999
+        self.tau = 5e-3
+        self.gamma = 0.99
         self.policy_freq = 2
         self.noise_clip = 0.5
         self.batch_size = 512
+        self.policy_noise = 0.2
+        self.actor_alpha = 3e-4
+        self.critic_alpha = 6e-4
         self.memory_size = 30000
-        self.policy_noise = 0.25
         self.dummy_episodes = 200
-        self.num_episodes = 15000
-        self.exploration_noise_start = 0.25
+        self.num_episodes = 20000
+        self.exploration_noise_start = 0.1
         self.exploration_noise_decay = 0.9999
         self.record_freq = self.num_episodes // num_records
         
     def _init_wandb(self, problem_instance):
         config = super()._init_wandb(problem_instance)
         config.tau = self.tau
-        config.alpha = self.alpha
         config.gamma = self.gamma 
         config.batch_size = self.batch_size
         config.noise_clip = self.noise_clip
         config.memory_size = self.memory_size
         config.policy_freq = self.policy_freq
+        config.actor_alpha = self.actor_alpha
+        config.critic_alpha = self.critic_alpha
         config.policy_noise = self.policy_noise
         config.num_episodes = self.num_episodes
         config.dummy_episodes = self.dummy_episodes
@@ -129,9 +131,9 @@ class Continuous(CDL):
         self.total_it = 0
         self.exploration_noise = self.exploration_noise_start
         self.buffer = PrioritizedReplayBuffer(self.state_dim, self.action_dim, self.memory_size)
-        self.actor = Actor(self.state_dim, self.action_dim, self.alpha)
+        self.actor = Actor(self.state_dim, self.action_dim, self.actor_alpha)
         self.actor_target = copy.deepcopy(self.actor)
-        self.critic = Critic(self.state_dim, self.action_dim, self.alpha)
+        self.critic = Critic(self.state_dim, self.action_dim, self.critic_alpha)
         self.critic_target = copy.deepcopy(self.critic)
         
         optim_lines = super()._generate_optimal_lines(problem_instance)

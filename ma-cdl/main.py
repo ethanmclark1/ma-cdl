@@ -41,7 +41,7 @@ class MA_CDL():
         self.direct_path = DirectPath(agent_radius, goal_radius, obstacle_radius)
                 
         self.aerial_agent = Speaker(num_agents, obstacle_radius)
-        self.ground_agent = [Listener(num_agents, agent_radius) for _ in range(num_agents)]
+        self.ground_agent = [Listener(agent_radius, obstacle_radius) for _ in range(num_agents)]
     
     def retrieve_languages(self, problem_instance):
         approaches = ['rl', 'grid_world', 'voronoi_map', 'direct_path']
@@ -54,7 +54,7 @@ class MA_CDL():
              
         return language_set
 
-    def act(self, problem_instance, language_set):
+    def act(self, problem_instance, language_set, num_episodes):
         rl = language_set['rl']
         approaches = list(language_set.keys())
         direction_length = {approach: [] for approach in approaches}
@@ -64,7 +64,7 @@ class MA_CDL():
         direction_set = {approach: None for approach in approaches}
         avg_direction_length = {approach: 0 for approach in approaches}
         
-        for _ in range(100):            
+        for _ in range(num_episodes):            
             self.env.reset(options={'problem_instance': problem_instance})
             start_state = self.env.state()
             self.aerial_agent.gather_info(start_state)
@@ -119,14 +119,14 @@ class MA_CDL():
 
 if __name__ == '__main__':
     num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode = get_arguments()
-    ma_cdl = MA_CDL(num_agents, num_large_obstacles,
-                    num_small_obstacles, action_space, render_mode)
+    ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
 
+    num_episodes = 100
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
     all_metrics = []
     for problem_instance in problem_instances:
         language_set = ma_cdl.retrieve_languages(problem_instance)
-        language_safety, ground_agent_success, avg_direction_length = ma_cdl.act(problem_instance, language_set)
+        language_safety, ground_agent_success, avg_direction_length = ma_cdl.act(problem_instance, language_set, num_episodes)
 
         all_metrics.append({
             'language_safety': language_safety,
@@ -134,4 +134,4 @@ if __name__ == '__main__':
             'avg_direction_length': avg_direction_length
         })
  
-    plot_metrics(problem_instances, all_metrics)
+    plot_metrics(problem_instances, all_metrics, num_episodes)

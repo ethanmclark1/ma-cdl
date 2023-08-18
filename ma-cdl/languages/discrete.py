@@ -20,10 +20,10 @@ class Discrete(CDL):
     def _init_hyperparams(self):
         num_records = 10
         
-        self.tau = 3e-3
-        self.alpha = 7e-4
-        self.gamma = 0.999
-        self.batch_size = 512
+        self.tau = 5e-3
+        self.alpha = 1e-4
+        self.gamma = 0.99
+        self.batch_size = 256
         self.granularity = 0.20
         self.memory_size = 30000
         self.epsilon_start = 1.0

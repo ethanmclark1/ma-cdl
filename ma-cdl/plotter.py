@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+# TODO: Divide by number of episodes to get a percentage
 def plot_metrics(problem_instances, all_metrics, num_episodes):
     metrics = list(all_metrics[0].keys())
     approaches = ['rl', 'grid_world', 'voronoi_map', 'direct_path']
@@ -17,18 +18,18 @@ def plot_metrics(problem_instances, all_metrics, num_episodes):
             ax = axes.flatten()[idx]
             metrics = all_metrics[idx][metric].copy()
 
-            if metric == 'ground_agent_success':
+            if metric == 'language_safety':
+                rl = (metrics[approaches[0]] / num_episodes) * 100
+                grid_world = (metrics[approaches[1]] / num_episodes) * 100
+                voronoi_map = (metrics[approaches[2]] / num_episodes) * 100
+                direct_path = (metrics[approaches[3]] / num_episodes) * 100
+            elif metric == 'ground_agent_success':
                 language_safety_metrics = all_metrics[idx]['language_safety']
                 for approach in approaches:
                     if metrics[approach] != 0:
                         metrics[approach] = metrics[approach] / language_safety_metrics[approach] * 100
                     else:
                         metrics[approach] = 0
-
-            rl = metrics[approaches[0]]
-            grid_world = metrics[approaches[1]]
-            voronoi_map = metrics[approaches[2]]
-            direct_path = metrics[approaches[3]]
 
             x_values = np.arange(num_approaches)
 
@@ -39,7 +40,7 @@ def plot_metrics(problem_instances, all_metrics, num_episodes):
             ax.set_xlabel(problem_instance.capitalize())
             ax.set_xticks(x_values)
             ax.set_xticklabels(approach_names)
-            ax.set_ylim(0, 20 if metric == 'avg_direction_len' else num_episodes)
+            ax.set_ylim(0, 20 if metric == 'avg_direction_len' else 100)
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         fig.savefig(f'results/{metric}.png')

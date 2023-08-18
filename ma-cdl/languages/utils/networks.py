@@ -61,12 +61,12 @@ class DuelingDQN(nn.Module):
         self.fc2 = nn.Linear(128, 128)
         
         # Advantage stream
-        self.adv_fc = nn.Linear(128, 64)
-        self.adv_out = nn.Linear(64, output_dims)   
+        self.adv_fc = nn.Linear(128, 128)
+        self.adv_out = nn.Linear(128, output_dims)   
         
         # Value stream
-        self.val_fc = nn.Linear(128, 32)
-        self.val_out = nn.Linear(32, 1)
+        self.val_fc = nn.Linear(128, 64)
+        self.val_out = nn.Linear(64, 1)
         
         self.optim = Adam(self.parameters(), lr=lr)
 

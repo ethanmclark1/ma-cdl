@@ -14,7 +14,6 @@ from languages.baselines.grid_world import GridWorld
 from languages.baselines.voronoi_map import VoronoiMap
 from languages.baselines.direct_path import DirectPath
 
-
 class MA_CDL():
     def __init__(self, num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode, max_cycles=50):
         
@@ -121,7 +120,7 @@ if __name__ == '__main__':
     num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode = get_arguments()
     ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
 
-    num_episodes = 100
+    num_episodes = 10000
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
     all_metrics = []
     for problem_instance in problem_instances:

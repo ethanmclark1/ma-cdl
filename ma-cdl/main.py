@@ -61,7 +61,7 @@ class MA_CDL():
         language_safety = {approach: 0 for approach in approaches}
         ground_agent_success = {approach: 0 for approach in approaches}
         direction_set = {approach: None for approach in approaches}
-        avg_direction_length = {approach: 0 for approach in approaches}
+        avg_direction_len = {approach: 0 for approach in approaches}
         
         for _ in range(num_episodes):            
             self.env.reset(options={'problem_instance': problem_instance})
@@ -111,9 +111,9 @@ class MA_CDL():
                 self.env.unwrapped.steps = 0
                 self.env.unwrapped.world = copy.deepcopy(backup)
         
-        avg_direction_length = {approach: np.mean(direction_length[approach]) for approach in approaches}
+        avg_direction_len = {approach: np.mean(direction_length[approach]) for approach in approaches}
 
-        return language_safety, ground_agent_success, avg_direction_length
+        return language_safety, ground_agent_success, avg_direction_len
         
 
 if __name__ == '__main__':
@@ -125,12 +125,12 @@ if __name__ == '__main__':
     all_metrics = []
     for problem_instance in problem_instances:
         language_set = ma_cdl.retrieve_languages(problem_instance)
-        language_safety, ground_agent_success, avg_direction_length = ma_cdl.act(problem_instance, language_set, num_episodes)
+        language_safety, ground_agent_success, avg_direction_len = ma_cdl.act(problem_instance, language_set, num_episodes)
 
         all_metrics.append({
             'language_safety': language_safety,
             'ground_agent_success': ground_agent_success,
-            'avg_direction_length': avg_direction_length
+            'avg_direction_len': avg_direction_len
         })
  
     plot_metrics(problem_instances, all_metrics, num_episodes)

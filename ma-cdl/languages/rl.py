@@ -12,7 +12,7 @@ from languages.utils.networks import Actor, Critic
 from languages.utils.replay_buffer import PrioritizedReplayBuffer
 
 """Using Twin-Delayed Deep Deterministic Policy Gradient (TD3) with Prioritized Experience Replay"""
-class Continuous(CDL):
+class RL(CDL):
     def __init__(self, scenario, world):
         super().__init__(scenario, world)
         self.action_dim = 3

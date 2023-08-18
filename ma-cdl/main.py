@@ -18,13 +18,13 @@ from languages.baselines.direct_path import DirectPath
 class MA_CDL():
     def __init__(self, num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode, max_cycles=50):
         
-        self.env = Signal8.env(
-            num_agents=num_agents, 
-            num_large_obstacles=num_large_obstacles, 
-            num_small_obstacles=num_small_obstacles, 
-            render_mode=render_mode,
-            max_cycles=max_cycles
-            )
+        # self.env = Signal8.env(
+        #     num_agents=num_agents, 
+        #     num_large_obstacles=num_large_obstacles, 
+        #     num_small_obstacles=num_small_obstacles, 
+        #     render_mode=render_mode,
+        #     max_cycles=max_cycles
+        #     )
         
         scenario = self.env.unwrapped.scenario
         world = self.env.unwrapped.world

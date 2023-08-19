@@ -4,8 +4,8 @@ from shapely import Point
 from languages.utils.cdl import CDL
 
 class Speaker:
-    def __init__(self, num_agents, obstacle_radius):
-        self.num_agents = num_agents
+    def __init__(self, obstacle_radius):
+        self.num_agents = 0
         self.obstacle_radius = obstacle_radius
     
     # Determine the positions of the agents, goals, and obstacles

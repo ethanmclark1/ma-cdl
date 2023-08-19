@@ -11,10 +11,9 @@ from agents.speaker import Speaker
 from agents.listener import Listener
 
 class MA_CDL():
-    def __init__(self, consider_colors, render_mode, max_cycles=50):
+    def __init__(self, render_mode, max_cycles=50):
         
         self.env = blocksworld3d.env(
-            consider_colors=consider_colors,
             render_mode=render_mode, 
             max_cycles=max_cycles
             )
@@ -27,7 +26,7 @@ class MA_CDL():
         # Context-Dependent Language
         self.rl = RL(scenario, world)
                 
-        self.aerial_agent = Speaker(num_agents, obstacle_radius)
+        self.aerial_agent = Speaker(obstacle_radius)
         self.ground_agent = Listener(agent_radius, obstacle_radius)
     
     def retrieve_language(self, problem_instance):
@@ -94,8 +93,8 @@ class MA_CDL():
         
 
 if __name__ == '__main__':
-    num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode = get_arguments()
-    ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
+    render_mode = get_arguments()
+    ma_cdl = MA_CDL(render_mode)
 
     num_episodes = 10000
     problem_instances = ma_cdl.env.unwrapped.world.problem_list

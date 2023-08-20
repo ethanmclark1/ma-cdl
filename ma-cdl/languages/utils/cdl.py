@@ -27,7 +27,7 @@ SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 class CDL(ABC):
     def __init__(self, scenario, world):
         self.min_lines = 1
-        self.max_lines = 5
+        self.max_lines = 8
         self.world = world
         self.scenario = scenario
         self.configs_to_consider = 100

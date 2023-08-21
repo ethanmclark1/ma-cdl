@@ -33,15 +33,15 @@ class Continuous(CDL):
         self.gamma = 0.99
         self.policy_freq = 2
         self.noise_clip = 0.5
-        self.batch_size = 512
+        self.batch_size = 256
         self.policy_noise = 0.2
         self.actor_alpha = 3e-4
-        self.critic_alpha = 6e-4
-        self.memory_size = 30000
+        self.critic_alpha = 4e-4
+        self.memory_size = 50000
         self.dummy_episodes = 200
         self.num_episodes = 20000
         self.exploration_noise_start = 0.1
-        self.exploration_noise_decay = 0.9999
+        self.exploration_noise_decay = 1
         self.record_freq = self.num_episodes // num_records
         
     def _init_wandb(self, problem_instance):

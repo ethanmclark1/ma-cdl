@@ -30,7 +30,7 @@ class CDL(ABC):
         self.max_lines = 8
         self.world = world
         self.scenario = scenario
-        self.configs_to_consider = 100
+        self.configs_to_consider = 250
         self.rng = np.random.default_rng(seed=42)
         
         self.buffer = None

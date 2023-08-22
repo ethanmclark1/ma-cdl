@@ -1,7 +1,6 @@
 import itertools
 import numpy as np
 import networkx as nx
-import matplotlib.pyplot as plt
 
 from languages.utils.cdl import CDL
 from languages.baselines.grid_world import GridWorld
@@ -11,8 +10,8 @@ from languages.baselines.direct_path import DirectPath
 
 class Listener:
     def __init__(self, agent_radius, obstacle_radius):
-        size = 30
-        self.resolution = 2 / size
+        size = 40
+        self.resolution = 2 / (size - 1)
         self.graph = nx.grid_graph((size, size), periodic=False)
         self.inflation_radius = int(round((agent_radius + obstacle_radius) / self.resolution))
 
@@ -50,7 +49,7 @@ class Listener:
             return None
 
         return target_pos
-    
+        
     # Inflate obstacles by the size of the agent and remove them from the graph
     def _clean_graph(self, graph, obstacle_nodes, agent_node, target_node):
         inflated_obstacle_nodes = set()
@@ -78,9 +77,9 @@ class Listener:
             return None
 
         graph = self.graph.copy()
-        agent_node = tuple(map(round, ((np.array(agent_pos) + 1) / self.resolution)))
-        target_node = tuple(map(round, ((np.array(target_pos) + 1) / self.resolution)))
-        obstacle_nodes = set(tuple(map(round, ((np.array(obstacle) + 1) / self.resolution))) for obstacle in obstacles)
+        agent_node = tuple(map(round, ((np.array(agent_pos) + 1) * 29 / 2)))
+        target_node = tuple(map(round, ((np.array(target_pos) + 1) * 29 / 2)))
+        obstacle_nodes = set(tuple(map(round, ((np.array(obstacle) + 1) * 29 / 2))) for obstacle in obstacles)
 
         graph = self._clean_graph(graph, obstacle_nodes, agent_node, target_node)
         

@@ -1,49 +1,25 @@
 import itertools
 import numpy as np
 import networkx as nx
-import matplotlib.pyplot as plt
 
 from languages.utils.cdl import CDL
-from languages.baselines.grid_world import GridWorld
-from languages.baselines.voronoi_map import VoronoiMap
-from languages.baselines.direct_path import DirectPath
-
 
 class Listener:
-    def __init__(self, agent_radius, obstacle_radius):
+    def __init__(self, agent):
         size = 30
         self.resolution = 2 / size
         self.graph = nx.grid_graph((size, size), periodic=False)
-        self.inflation_radius = int(round((agent_radius + obstacle_radius) / self.resolution))
+        self.agent = agent
 
     # Get the target position for the agent to move towards
-    def _get_target(self, agent_pos, goal_pos, directions, approach, language):
+    def _get_target(self, agent_pos, goal_pos, directions, language):
         # Get agent region from language
-        if approach == 'rl':
-            agent_region = CDL.localize(agent_pos, language)
-        elif approach == 'voronoi_map':
-            agent_region = CDL.localize(agent_pos, VoronoiMap.regions)
-        elif approach == 'grid_world':
-            agent_region = GridWorld.discretize(agent_pos)
+        agent_region = CDL.localize(agent_pos, language)
 
         try:
             target_region = directions[directions.index(agent_region) + 1]
-            if approach == 'rl':
-                centroid = language[target_region].centroid
-                target_pos = np.array([centroid.x, centroid.y])
-            elif approach == 'voronoi_map':
-                centroid = VoronoiMap.regions[target_region].centroid
-                target_pos = np.array([centroid.x, centroid.y])
-            elif approach == 'grid_world':
-                target_pos = GridWorld.dequantize(target_region)
-        except UnboundLocalError:
-            agent_idx = DirectPath.get_point_index(agent_pos)
-            agent_pos = np.array(directions[agent_idx])
-            if agent_idx == len(directions) - 1:
-                target_pos = np.array(directions[agent_idx])
-                target_pos = goal_pos
-            else:
-                target_pos = np.array(directions[agent_idx + 1])
+            centroid = language[target_region].centroid
+            target_pos = np.array([centroid.x, centroid.y])
         except IndexError:
             target_pos = goal_pos
         except ValueError:

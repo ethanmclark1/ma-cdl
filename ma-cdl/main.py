@@ -11,23 +11,18 @@ from agents.speaker import Speaker
 from agents.listener import Listener
 
 class MA_CDL():
-    def __init__(self, render_mode, max_cycles=50):
+    def __init__(self, render_mode, max_cycles=100):
         
         self.env = blocksworld3d.env(
             render_mode=render_mode, 
             max_cycles=max_cycles
             )
         
-        scenario = self.env.unwrapped.scenario
-        world = self.env.unwrapped.world
-        agent_radius = world.agents[0].radius
-        obstacle_radius = world.small_obstacles[0].radius 
+        unwrapped_env = self.env.unwrapped
         
-        # Context-Dependent Language
-        self.rl = RL(scenario, world)
-                
-        self.aerial_agent = Speaker(obstacle_radius)
-        self.ground_agent = Listener(agent_radius, obstacle_radius)
+        self.rl = RL(unwrapped_env)                
+        self.aerial_agent = Speaker()
+        self.ground_agent = Listener(unwrapped_env.agent)
     
     def retrieve_language(self, problem_instance):
         return self.rl.get_language(problem_instance)
@@ -96,11 +91,11 @@ if __name__ == '__main__':
     render_mode = get_arguments()
     ma_cdl = MA_CDL(render_mode)
 
-    num_episodes = 10000
-    problem_instances = ma_cdl.env.unwrapped.world.problem_list
     all_metrics = []
+    num_episodes = 10000
+    problem_instances = blocksworld3d.get_problem_list()
     for problem_instance in problem_instances:
-        language_set = ma_cdl.retrieve_languages(problem_instance)
+        language_set = ma_cdl.retrieve_language(problem_instance)
         language_safety, ground_agent_success, avg_direction_length = ma_cdl.act(problem_instance, language_set, num_episodes)
 
         all_metrics.append({

@@ -13,9 +13,9 @@ from languages.utils.replay_buffer import PrioritizedReplayBuffer
 
 """Using Twin-Delayed Deep Deterministic Policy Gradient (TD3) with Prioritized Experience Replay"""
 class RL(CDL):
-    def __init__(self, scenario, world):
-        super().__init__(scenario, world)
-        self.action_dim = 3
+    def __init__(self, unwrapped_env):
+        super().__init__(unwrapped_env)
+        self.action_dim = len(unwrapped_env.actions)
         self._init_hyperparams()
         
         self.actor = None

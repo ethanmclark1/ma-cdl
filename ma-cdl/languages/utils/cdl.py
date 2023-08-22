@@ -23,25 +23,22 @@ BOUNDARIES = [LineString([CORNERS[0], CORNERS[2]]),
               LineString([CORNERS[1], CORNERS[0]])]
 SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
-# Abstract base class for context-dependent language approaches (DuelingDDQN and TD3)
+# Abstract base class for context-dependent language approach
 class CDL(ABC):
-    def __init__(self, scenario, world):
+    def __init__(self, unwrapped_env):
         self.min_lines = 1
-        self.max_lines = 5
-        self.world = world
-        self.scenario = scenario
-        self.configs_to_consider = 100
+        self.max_lines = 8
+        self.configs_to_consider = 250
+        self.unwrapped_env = unwrapped_env
         self.rng = np.random.default_rng(seed=42)
         
         self.buffer = None
         self.state_dim = 128
         self.valid_lines = set()
-        self.name = self.__class__.__name__
+        self.name = self.unwrapped_env.__class__.__name__
         
-        self.obstacle_radius = world.large_obstacles[0].radius
-    
-    def _save(self, approach, problem_instance, language):
-        directory = f'ma-cdl/languages/history/{approach.lower()}'
+    def _save(self, problem_instance, language):
+        directory = 'ma-cdl/languages/history'
         filename = f'{problem_instance}.pkl'
         file_path = os.path.join(directory, filename)
         if not os.path.exists(directory):
@@ -50,8 +47,8 @@ class CDL(ABC):
         with open(file_path, 'wb') as file:
             pickle.dump(language, file)
     
-    def _load(self, approach, problem_instance):
-        directory = f'ma-cdl/languages/history/{approach.lower()}'
+    def _load(self, problem_instance):
+        directory = 'ma-cdl/languages/history'
         filename = f'{problem_instance}.pkl'
         file_path = os.path.join(directory, filename)
         with open(file_path, 'rb') as f:
@@ -59,7 +56,7 @@ class CDL(ABC):
         return language
     
     def _init_wandb(self, problem_instance):
-        wandb.init(project='ma-cdl', entity='ethanmclark1', name=f'{self.__class__.__name__}/{problem_instance.capitalize()}')
+        wandb.init(project='ma-cdl', entity='ethanmclark1', name=f'{self.name}/{problem_instance.capitalize()}')
         config = wandb.config
         return config
     
@@ -365,17 +362,16 @@ class CDL(ABC):
                 
     # Returns regions that defines the language
     def get_language(self, problem_instance):
-        approach = self.__class__.__name__
         try:
-            language = self._load(approach, problem_instance)
+            language = self._load(problem_instance)
         except FileNotFoundError:
-            print(f'No stored {approach} language for {problem_instance} problem instance.')
+            print(f'No stored {self.name} language for {problem_instance} problem instance.')
             print('Generating new language...\n')
             lines = self._generate_optimal_lines(problem_instance)
             linestrings = CDL.get_shapely_linestring(lines)
             valid_lines = CDL.get_valid_lines(linestrings)
             language = CDL.create_regions(valid_lines)
-            self._visualize(approach, problem_instance, language)
-            self._save(approach, problem_instance, language)
+            self._visualize(problem_instance, language)
+            self._save(problem_instance, language)
         
         return language

@@ -23,17 +23,17 @@ class AE:
         self.model = Autoencoder(output_dims)
         self.name = f'Discrete{self.__class__.__name__}' if action_set is not None else f'Continuous{self.__class__.__name__}'
         
-        try:
-            state_dict = torch.load(f'ma-cdl/languages/history/{self.name}.pth')
-            self.model.load_state_dict(state_dict)
-        except:
-            self._init_hyperparams()
-            self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, self.num_train_epochs, max_lines, action_set)
-            self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
-            self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
-            self._train()
-            self._save_model()
+        # try:
+        #     state_dict = torch.load(f'ma-cdl/languages/history/{self.name}.pth')
+        #     self.model.load_state_dict(state_dict)
+        # except:
+        #     self._init_hyperparams()
+        #     self.loss = torch.nn.MSELoss()
+        #     self.dataset = ImageDataset(rng, self.num_train_epochs, max_lines, action_set)
+        #     self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
+        #     self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
+        #     self._train()
+        #     self._save_model()
 
     def _init_hyperparams(self):
         self.batch_size = 16

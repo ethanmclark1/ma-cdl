@@ -11,7 +11,8 @@ from languages.baselines.direct_path import DirectPath
 class Listener:
     def __init__(self, agent_radius, obstacle_radius):
         size = 40
-        self.resolution = 2 / (size - 1)
+        self.grid_conversion_factor = size - 1
+        self.resolution = 2 / self.grid_conversion_factor
         self.graph = nx.grid_graph((size, size), periodic=False)
         self.inflation_radius = int(round((agent_radius + obstacle_radius) / self.resolution))
 
@@ -49,7 +50,7 @@ class Listener:
             return None
 
         return target_pos
-        
+
     # Inflate obstacles by the size of the agent and remove them from the graph
     def _clean_graph(self, graph, obstacle_nodes, agent_node, target_node):
         inflated_obstacle_nodes = set()
@@ -77,18 +78,18 @@ class Listener:
             return None
 
         graph = self.graph.copy()
-        agent_node = tuple(map(round, ((np.array(agent_pos) + 1) * 29 / 2)))
-        target_node = tuple(map(round, ((np.array(target_pos) + 1) * 29 / 2)))
-        obstacle_nodes = set(tuple(map(round, ((np.array(obstacle) + 1) * 29 / 2))) for obstacle in obstacles)
+        agent_node = tuple(map(round, ((np.array(agent_pos) + 1) * self.grid_conversion_factor / 2)))
+        target_node = tuple(map(round, ((np.array(target_pos) + 1) * self.grid_conversion_factor / 2)))
+        obstacle_nodes = set(tuple(map(round, ((np.array(obstacle) + 1) * self.grid_conversion_factor / 2))) for obstacle in obstacles)
 
         graph = self._clean_graph(graph, obstacle_nodes, agent_node, target_node)
-        
+
         try:
             path = nx.astar_path(graph, agent_node, target_node, heuristic=euclidean_dist)
-            
+
             next_state = np.array(path[1]) * self.resolution - 1
             direction = (next_state - agent_pos) / np.linalg.norm(next_state - agent_pos)
-            
+
             if np.abs(direction[0]) > np.abs(direction[1]):
                 if direction[0] < 0:
                     action = 1  # move left
@@ -100,8 +101,8 @@ class Listener:
                 else:
                     action = 4  # move up
         except IndexError:
-            action = 0 # no-op
+            action = 0  # no-op
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             action = None
-        
+
         return action

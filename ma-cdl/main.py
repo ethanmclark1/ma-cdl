@@ -124,7 +124,7 @@ if __name__ == '__main__':
     num_episodes = 10000
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
     for problem_instance in problem_instances:
-        language_set = ma_cdl.retrieve_languages(problem_instances)
+        language_set = ma_cdl.retrieve_languages(problem_instance)
         language_safety, ground_agent_success, avg_direction_len = ma_cdl.act(problem_instance, language_set, num_episodes)
 
         all_metrics.append({

@@ -40,7 +40,7 @@ class MA_CDL():
         self.direct_path = DirectPath(agent_radius, goal_radius, obstacle_radius)
                 
         self.aerial_agent = Speaker(num_agents, obstacle_radius)
-        self.ground_agent = [Listener(agent_radius, obstacle_radius) for _ in range(num_agents)]
+        self.ground_agent = [Listener() for _ in range(num_agents)]
     
     def retrieve_languages(self, problem_instance):
         approaches = ['rl', 'grid_world', 'voronoi_map', 'direct_path']
@@ -120,11 +120,11 @@ if __name__ == '__main__':
     num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode = get_arguments()
     ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
 
+    all_metrics = []
     num_episodes = 10000
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
-    all_metrics = []
     for problem_instance in problem_instances:
-        language_set = ma_cdl.retrieve_languages(problem_instance)
+        language_set = ma_cdl.retrieve_languages(problem_instances)
         language_safety, ground_agent_success, avg_direction_len = ma_cdl.act(problem_instance, language_set, num_episodes)
 
         all_metrics.append({

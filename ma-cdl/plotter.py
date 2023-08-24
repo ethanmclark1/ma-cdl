@@ -11,8 +11,8 @@ def plot_metrics(problem_instances, all_metrics, num_episodes):
     approaches = ['rl', 'grid_world', 'voronoi_map', 'direct_path']
     num_approaches = len(approaches)
 
-    approach_names = ['RL', 'Grid World', 'Voronoi Map', 'Direct Path']
-    metric_names = ['Language Safety', 'Ground Agent Success Rate (as a percentage of Language Safety)', 'Average Direction Length']
+    approach_names = ['CDL', 'Grid World', 'Voronoi Map', 'Direct Path']
+    metric_names = ['Language Safety', 'Ground Agent Success', 'Average Direction Length']
     
     for metric, name in zip(metrics, metric_names):
         fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 10))
@@ -46,7 +46,7 @@ def plot_metrics(problem_instances, all_metrics, num_episodes):
                 
             x_values = np.arange(num_approaches)
 
-            ax.bar(x_values[0], rl, width=0.2, label='RL')
+            ax.bar(x_values[0], rl, width=0.2, label='CDL')
             ax.bar(x_values[1], grid_world, width=0.2, label='Grid World')
             ax.bar(x_values[2], voronoi_map, width=0.2, label='Voronoi Map')
             ax.bar(x_values[3], direct_path, width=0.2, label='Direct Path')

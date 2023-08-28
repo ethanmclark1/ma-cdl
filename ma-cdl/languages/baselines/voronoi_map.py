@@ -31,23 +31,6 @@ class VoronoiMap:
                 clipped_voronoi.extend(clipped_polygon)
         return MultiPolygon(clipped_voronoi)
     
-    def visualize(self, start, goal, obstacles):
-        fig, ax = plt.subplots()
-        
-        for i, polygon in enumerate(VoronoiMap.regions):
-            x, y = polygon.exterior.xy
-            ax.fill(x, y)
-            centroid = polygon.centroid
-            ax.text(centroid.x, centroid.y, str(i), color='black')
-        
-        points = np.array([start, goal, *obstacles])
-        ax.plot(points[:, 0], points[:, 1], 'ko')
-        
-        ax.set_xlim(-1, 1)
-        ax.set_ylim(-1, 1)
-
-        plt.show()
-    
     def direct(self, start, goal, obstacles): 
         def euclidean_distance(a, b):
             return Point(VoronoiMap.regions[a].centroid).distance(Point(VoronoiMap.regions[b].centroid))

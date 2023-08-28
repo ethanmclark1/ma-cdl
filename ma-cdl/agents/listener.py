@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 import networkx as nx
 
@@ -8,11 +9,12 @@ from languages.baselines.direct_path import DirectPath
 
 
 class Listener:
-    def __init__(self):
-        size = 30
+    def __init__(self, agent_radius, obstacle_radius):
+        size = 60
         self.grid_conversion_factor = size - 1
         self.resolution = 2 / self.grid_conversion_factor
         self.graph = nx.grid_graph((size, size), periodic=False)
+        self.inflation_radius = int(round((agent_radius + obstacle_radius) / self.resolution))
 
     # Get the target position for the agent to move towards
     def _get_target(self, agent_pos, goal_pos, directions, approach, language):
@@ -49,13 +51,21 @@ class Listener:
 
         return target_pos
 
-    # Inflate obstacles by the size of the agent and remove them from the graph
     def _clean_graph(self, graph, obstacle_nodes, agent_node, target_node):
-        obstacle_nodes = set(obstacle_nodes)
+        inflated_obstacle_nodes = set()
+        for obstacle_node in obstacle_nodes:
+            for dx, dy in itertools.product(range(-self.inflation_radius, self.inflation_radius + 1), repeat=2):
+                # Check if the current (dx, dy) is within the circular distance
+                if dx**2 + dy**2 <= self.inflation_radius**2:
+                    inflated_node = (obstacle_node[0] + dx, obstacle_node[1] + dy)
+                    if 0 <= inflated_node[0] < self.grid_conversion_factor and 0 <= inflated_node[1] < self.grid_conversion_factor:
+                        inflated_obstacle_nodes.add(inflated_node)
 
-        obstacle_nodes.discard(agent_node)
-        obstacle_nodes.discard(target_node)
-        graph.remove_nodes_from(obstacle_nodes)
+        inflated_obstacle_nodes.discard(agent_node)
+        inflated_obstacle_nodes.discard(target_node)
+
+        # Remove the inflated obstacle nodes from the graph
+        graph.remove_nodes_from(inflated_obstacle_nodes)
         return graph
 
     def get_action(self, observation, directions, approach, language):
@@ -75,6 +85,7 @@ class Listener:
         agent_node = tuple(map(round, ((np.array(agent_pos) + 1) * self.grid_conversion_factor / 2)))
         target_node = tuple(map(round, ((np.array(target_pos) + 1) * self.grid_conversion_factor / 2)))
         obstacle_nodes = set(tuple(map(round, ((np.array(obstacle) + 1) * self.grid_conversion_factor / 2))) for obstacle in obstacles)
+
         graph = self._clean_graph(graph, obstacle_nodes, agent_node, target_node)
 
         try:

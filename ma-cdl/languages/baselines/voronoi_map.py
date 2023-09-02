@@ -1,6 +1,4 @@
-import numpy as np
 import networkx as nx
-import matplotlib.pyplot as plt
 
 from languages.utils.cdl import CDL
 from shapely import Point, MultiPoint, Polygon, MultiPolygon, voronoi_polygons
@@ -48,7 +46,7 @@ class VoronoiMap:
         
         try:
             directions = nx.astar_path(safe_graph, agent_idx, goal_idx, heuristic=euclidean_distance)
-        except nx.NetworkXNoPath:
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
             directions = None
 
         return directions

@@ -10,7 +10,7 @@ from languages.baselines.direct_path import DirectPath
 
 class Listener:
     def __init__(self, agent_radius, obstacle_radius):
-        size = 60
+        size = 50
         self.grid_conversion_factor = size - 1
         self.resolution = 2 / self.grid_conversion_factor
         self.graph = nx.grid_graph((size, size), periodic=False)

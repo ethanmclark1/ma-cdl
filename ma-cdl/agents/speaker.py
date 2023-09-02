@@ -25,7 +25,9 @@ class Speaker:
         if isinstance(approach, list):
             directions = self.direct_with_cdl(approach)
         else:
-            directions = self.direct_with_baseline(approach)
+            directions = []
+            for agent, goal in zip(self.agents, self.goals):
+                directions += [approach.direct(agent, goal, self.obstacles)]
         
         return directions
             
@@ -46,12 +48,4 @@ class Speaker:
             except (nx.NodeNotFound, nx.NetworkXNoPath):
                 directions += [None]
             
-        return directions
-        
-    def direct_with_baseline(self, approach):
-        directions = []
-        
-        for agent, goal in zip(self.agents, self.goals):
-            directions += [approach.direct(agent, goal, self.obstacles)]
-
         return directions

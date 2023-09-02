@@ -40,10 +40,10 @@ class MA_CDL():
         self.direct_path = DirectPath(agent_radius, goal_radius, obstacle_radius)
                 
         self.aerial_agent = Speaker(num_agents, obstacle_radius)
-        self.ground_agent = [Listener() for _ in range(num_agents)]
+        self.ground_agent = [Listener(agent_radius, obstacle_radius) for _ in range(num_agents)]
     
     def retrieve_languages(self, problem_instance):
-        approaches = ['rl', 'grid_world', 'voronoi_map', 'direct_path']
+        approaches = ['rl', 'voronoi_map', 'grid_world', 'direct_path']
         language_set = {approach: None for approach in approaches} 
         
         for idx, name in enumerate(approaches):
@@ -56,12 +56,14 @@ class MA_CDL():
     def act(self, problem_instance, language_set, num_episodes):
         rl = language_set['rl']
         approaches = list(language_set.keys())
-        direction_length = {approach: [] for approach in approaches}
-    
+        direction_set = {approach: None for approach in approaches}
+
+
         language_safety = {approach: 0 for approach in approaches}
         ground_agent_success = {approach: 0 for approach in approaches}
-        direction_set = {approach: None for approach in approaches}
+
         avg_direction_len = {approach: 0 for approach in approaches}
+        direction_length = {approach: [] for approach in approaches}
         
         for _ in range(num_episodes):            
             self.env.reset(options={'problem_instance': problem_instance})
@@ -73,8 +75,8 @@ class MA_CDL():
             backup = copy.deepcopy(world)
             
             direction_set['rl'] = self.aerial_agent.direct(rl)
-            direction_set['grid_world'] = self.aerial_agent.direct(self.grid_world)
             direction_set['voronoi_map'] = self.aerial_agent.direct(self.voronoi_map)
+            direction_set['grid_world'] = self.aerial_agent.direct(self.grid_world)
             direction_set['direct_path'] = self.aerial_agent.direct(self.direct_path)
             
             for approach, directions in direction_set.items(): 
@@ -121,7 +123,7 @@ if __name__ == '__main__':
     ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
 
     all_metrics = []
-    num_episodes = 10000
+    num_episodes = 5
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
     for problem_instance in problem_instances:
         language_set = ma_cdl.retrieve_languages(problem_instance)
@@ -130,7 +132,7 @@ if __name__ == '__main__':
         all_metrics.append({
             'language_safety': language_safety,
             'ground_agent_success': ground_agent_success,
-            'avg_direction_len': avg_direction_len
+            'avg_direction_len': avg_direction_len,
         })
  
     plot_metrics(problem_instances, all_metrics, num_episodes)

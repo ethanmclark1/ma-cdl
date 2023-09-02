@@ -15,14 +15,14 @@ def get_arguments():
     parser.add_argument(
         '--num_large_obstacles',
         type=int, 
-        default=4,
+        default=10,
         help='Number of large obstacles in the environment (no more than 16) {default_val: 6}'
         )
     
     parser.add_argument(
         '--num_small_obstacles', 
         type=int, 
-        default=10,
+        default=4,
         help='Number of small obstacles in the environment {default_val: 10}'
         )
     

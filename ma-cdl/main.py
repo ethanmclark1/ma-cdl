@@ -123,7 +123,7 @@ if __name__ == '__main__':
     ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
 
     all_metrics = []
-    num_episodes = 5
+    num_episodes = 5000
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
     for problem_instance in problem_instances:
         language_set = ma_cdl.retrieve_languages(problem_instance)

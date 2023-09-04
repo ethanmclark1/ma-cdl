@@ -58,7 +58,6 @@ class MA_CDL():
         approaches = list(language_set.keys())
         direction_set = {approach: None for approach in approaches}
 
-
         language_safety = {approach: 0 for approach in approaches}
         ground_agent_success = {approach: 0 for approach in approaches}
 
@@ -80,7 +79,17 @@ class MA_CDL():
             direction_set['direct_path'] = self.aerial_agent.direct(self.direct_path)
             
             for approach, directions in direction_set.items(): 
+                # Penalize if no directions are given
                 if None in directions:
+                    if approach == 'rl':
+                        directions = len(rl)
+                    elif approach == 'voronoi_map':
+                        directions = len(self.voronoi_map.regions)
+                    elif approach == 'grid_world':
+                        directions = self.grid_world.graph.number_of_nodes()
+                    else:
+                        directions = 20
+                    direction_length[approach].append(directions)
                     continue
                 
                 language_safety[approach] += 1
@@ -123,7 +132,7 @@ if __name__ == '__main__':
     ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
 
     all_metrics = []
-    num_episodes = 5000
+    num_episodes = 10000
     problem_instances = ma_cdl.env.unwrapped.world.problem_list
     for problem_instance in problem_instances:
         language_set = ma_cdl.retrieve_languages(problem_instance)

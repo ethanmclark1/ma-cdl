@@ -1,123 +1,57 @@
 import copy
-import Signal8
 import numpy as np
+import gymnasium as gym
 
 from plotter import plot_metrics
-from arguments import get_arguments
 
 from agents.speaker import Speaker
 from agents.listener import Listener
 
 from languages.discrete import Discrete
-from languages.continuous import Continuous
-from languages.baselines.grid_world import GridWorld
-from languages.baselines.voronoi_map import VoronoiMap
-from languages.baselines.direct_path import DirectPath
 
 class MA_CDL():
-    def __init__(self, num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode, max_cycles=50):
-        
-        self.env = Signal8.env(
-            num_agents=num_agents, 
-            num_large_obstacles=num_large_obstacles, 
-            num_small_obstacles=num_small_obstacles, 
-            render_mode=render_mode,
-            max_cycles=max_cycles
-            )
-        
-        scenario = self.env.unwrapped.scenario
-        world = self.env.unwrapped.world
-        agent_radius = world.agents[0].radius
-        goal_radius = world.goals[0].radius
-        obstacle_radius = world.small_obstacles[0].radius 
-        
-        # Context-Dependent Language
-        self.rl = Discrete(scenario, world) if action_space == 'discrete' else Continuous(scenario, world)
-                                
-        # Baselines
-        self.grid_world = GridWorld()
-        self.voronoi_map = VoronoiMap()
-        self.direct_path = DirectPath(agent_radius, goal_radius, obstacle_radius)
-                
-        self.aerial_agent = Speaker(num_agents, obstacle_radius)
-        self.ground_agent = [Listener(agent_radius, obstacle_radius) for _ in range(num_agents)]
+    def __init__(self, natural=False, sab=False):
+        self.env = gym.make('Blackjack-v1', natural=natural, sab=sab)
     
-    def retrieve_languages(self, problem_instance):
-        approaches = ['rl', 'voronoi_map', 'grid_world', 'direct_path']
-        language_set = {approach: None for approach in approaches} 
-        
-        for idx, name in enumerate(approaches):
-            approach = getattr(self, approaches[idx])
-            if hasattr(approach, 'get_language'):
-                language_set[name] = getattr(self, approaches[idx]).get_language(problem_instance)
-             
-        return language_set
-
-    def act(self, problem_instance, language_set, num_episodes):
-        rl = language_set['rl']
-        approaches = list(language_set.keys())
-        direction_set = {approach: None for approach in approaches}
-
-        language_safety = {approach: 0 for approach in approaches}
-        ground_agent_success = {approach: 0 for approach in approaches}
-
-        avg_direction_len = {approach: 0 for approach in approaches}
-        direction_length = {approach: [] for approach in approaches}
-        
-        for _ in range(num_episodes):            
-            self.env.reset(options={'problem_instance': problem_instance})
-            start_state = self.env.state()
-            self.aerial_agent.gather_info(start_state)
-            
-            # Create copy of world to reset to at beginning of each approach
-            world = self.env.unwrapped.world
-            backup = copy.deepcopy(world)
-            
-            direction_set['rl'] = self.aerial_agent.direct(rl)
-            direction_set['voronoi_map'] = self.aerial_agent.direct(self.voronoi_map)
-            direction_set['grid_world'] = self.aerial_agent.direct(self.grid_world)
-            direction_set['direct_path'] = self.aerial_agent.direct(self.direct_path)
-            
-            for approach, directions in direction_set.items(): 
-                # Penalize if no directions are given
-                if None in directions:
-                    if approach == 'rl':
-                        directions = len(rl)
-                    elif approach == 'voronoi_map':
-                        directions = len(self.voronoi_map.regions)
-                    elif approach == 'grid_world':
-                        directions = self.grid_world.graph.number_of_nodes()
-                    else:
-                        directions = 20
-                    direction_length[approach].append(directions)
-                    continue
+        # Context-Dependent Language
+        self.rl = Discrete()
                 
-                language_safety[approach] += 1
-                max_directions = max(len(direction) for direction in directions)
-                direction_length[approach].append(max_directions)
+        self.observer = Speaker()
+        self.player = Listener()
 
-                i = 0 
-                observation, _, termination, truncation, _ = self.env.last()
-                while not (termination or truncation):
-                    action = self.ground_agent[i].get_action(observation, directions[i], approach, language_set[approach])
+    def act(self, num_episodes):
+        language = self.rl.get_language()
+        self.observer.set_language(language)
+        
+        for _ in range(num_episodes):        
+            obs, _ = self.env.reset()
+            sum, dealer, has_ace = obs
+            self.observer.set_state(dealer)
+            self.player.set_state(sum, has_ace)
+        
+            self.observer.direct(language)
+            termination = truncation = False
+            
+            while not (termination or truncation):
+                action = self.ground_agent[i].get_action(observation, directions[i], approach, language_set[approach])
 
-                    # Epsisode terminates if ground agent doesn't adhere to directions
-                    if action is not None:
-                        self.env.step(action)
-                        observation, _, termination, truncation, _ = self.env.last()
-                    else:
-                        truncation = True
-                                
-                    if termination:
-                        ground_agent_success[approach] += 1
-                        self.env.terminations['agent_0'] = False
-                        break
-                    elif truncation:
-                        self.env.truncations['agent_0'] = False
-                        break   
-                    
-                    i += 1
-                    i %= len(directions)
+                # Epsisode terminates if ground agent doesn't adhere to directions
+                if action is not None:
+                    self.env.step(action)
+                    observation, _, termination, truncation, _ = self.env.last()
+                else:
+                    truncation = True
+                            
+                if termination:
+                    ground_agent_success[approach] += 1
+                    self.env.terminations['agent_0'] = False
+                    break
+                elif truncation:
+                    self.env.truncations['agent_0'] = False
+                    break   
+                
+                i += 1
+                i %= len(directions)
                     
                 self.env.unwrapped.steps = 0
                 self.env.unwrapped.world = copy.deepcopy(backup)
@@ -128,20 +62,19 @@ class MA_CDL():
         
 
 if __name__ == '__main__':
-    num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode = get_arguments()
-    ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
+    ma_cdl = MA_CDL()
 
     all_metrics = []
     num_episodes = 10000
-    problem_instances = ma_cdl.env.unwrapped.world.problem_list
-    for problem_instance in problem_instances:
-        language_set = ma_cdl.retrieve_languages(problem_instance)
-        language_safety, ground_agent_success, avg_direction_len = ma_cdl.act(problem_instance, language_set, num_episodes)
+    ma_cdl.act(num_episodes)
+    # for problem_instance in problem_instances:
+    #     language_set = ma_cdl.retrieve_languages(problem_instance)
+    #     language_safety, ground_agent_success, avg_direction_len = ma_cdl.act(problem_instance, language_set, num_episodes)
 
-        all_metrics.append({
-            'language_safety': language_safety,
-            'ground_agent_success': ground_agent_success,
-            'avg_direction_len': avg_direction_len,
-        })
+    #     all_metrics.append({
+    #         'language_safety': language_safety,
+    #         'ground_agent_success': ground_agent_success,
+    #         'avg_direction_len': avg_direction_len,
+    #     })
  
-    plot_metrics(problem_instances, all_metrics, num_episodes)
+    # plot_metrics(problem_instances, all_metrics, num_episodes)

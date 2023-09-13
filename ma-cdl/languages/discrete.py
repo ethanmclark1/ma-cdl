@@ -8,15 +8,12 @@ from languages.utils.replay_buffer import PrioritizedReplayBuffer
 
 """Using Dueling DDQN with Prioritized Experience Replay"""
 class Discrete(CDL):
-    def __init__(self, scenario, world):
-        super().__init__(scenario, world)     
-           
-        self._init_hyperparams()        
-        self._create_candidate_set_of_lines()
-        self.num_actions = len(self.candidate_lines)
+    def __init__(self):
+        super().__init__()        
+        self._init_hyperparams()    
         
-        self.autoencoder = AE(self.state_dim, self.rng, self.max_lines, self.candidate_lines)
-
+        self.num_actions = 2    
+        
     def _init_hyperparams(self):
         num_records = 10
         
@@ -48,26 +45,6 @@ class Discrete(CDL):
     def _decrement_exploration(self):
         self.epsilon *= self.epsilon_decay
         self.epsilon = max(0.01, self.epsilon)
-        
-    # Generate possible set of lines to choose from
-    def _create_candidate_set_of_lines(self):
-        self.candidate_lines = []
-        granularity = int(self.granularity * 100)
-        
-        # termination line
-        self.candidate_lines += [(0, 0, 0)]
-        
-        # vertical/horizontal lines
-        for i in range(-100 + granularity, 100, granularity):
-            i /= 1000
-            self.candidate_lines += [(0.1, 0, i)] # vertical lines
-            self.candidate_lines += [(0, 0.1, i)] # horizontal lines
-        
-        # diagonal lines
-        for i in range(-200 + granularity, 200, granularity):
-            i /= 1000
-            self.candidate_lines += [(0.1, 0.1, i)]
-            self.candidate_lines += [(-0.1, 0.1, i)]
         
     # Select a line for a given state based on epsilon-greedy policy
     def _select_action(self, state):
@@ -119,13 +96,13 @@ class Discrete(CDL):
         
         return None, loss.item(), td_error.numpy(), tree_idxs
     
-    def _generate_optimal_lines(self, problem_instance):        
+    def _generate_optimal_lines(self):        
         # Start from a blank slate every time
         self.epsilon = self.epsilon_start
         self.buffer = PrioritizedReplayBuffer(self.state_dim, 1, self.memory_size)
         self.dqn = DuelingDQN(self.state_dim, self.num_actions, self.alpha)
         self.target_dqn = copy.deepcopy(self.dqn)
         
-        optim_lines = super()._generate_optimal_lines(problem_instance)
+        optim_lines = super()._generate_optimal_lines()
           
         return optim_lines  

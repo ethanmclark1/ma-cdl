@@ -15,10 +15,11 @@ def plot_metrics(problem_instances, all_metrics, num_episodes):
     metric_names = ['Language Safety', 'Ground Agent Success', 'Average Direction Length']
     
     for metric, name in zip(metrics, metric_names):
-        fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(20, 10))
-        fig.suptitle(f'{name}')
         for idx, problem_instance in enumerate(problem_instances):
-            ax = axes.flatten()[idx]
+            problem_dir = f'{results_dir}/{problem_instance}'
+            if not os.path.exists(problem_dir):
+                os.makedirs(problem_dir)
+                
             metrics = all_metrics[idx][metric].copy()
 
             if metric == 'language_safety':
@@ -45,17 +46,17 @@ def plot_metrics(problem_instances, all_metrics, num_episodes):
                 
             x_values = np.arange(num_approaches)
 
-            ax.bar(x_values[0], rl, width=0.2, label='Our Approach')
-            ax.bar(x_values[1], voronoi_map, width=0.2, label='Voronoi Map')
-            ax.bar(x_values[2], grid_world, width=0.2, label='Grid World')
-            ax.bar(x_values[3], direct_path, width=0.2, label='Direct Path')
-            ax.set_xlabel(problem_instance.capitalize())
-            ax.set_xticks(x_values)
-            ax.set_xticklabels(approach_names)
-            ax.set_ylim(0, 20 if metric == 'avg_direction_len' else 100)
-
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        fig.savefig(f'{results_dir}/{metric}.png')
+            plt.bar(x_values[0], rl, width=0.2, label='Our Approach')
+            plt.bar(x_values[1], voronoi_map, width=0.2, label='Voronoi Map')
+            plt.bar(x_values[2], grid_world, width=0.2, label='Grid World')
+            plt.bar(x_values[3], direct_path, width=0.2, label='Direct Path')
+            plt.xlabel(problem_instance.capitalize())
+            plt.xticks(x_values, labels=approach_names)
+            plt.ylim(0, 20 if metric == 'avg_direction_len' else 100)
+            
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+            plt.savefig(f'{results_dir}/{problem_instance}/{metric}.png')
+            plt.clf()
         
         for i in range(len(all_metrics)):
             print(f'{problem_instances[i]} {metric}: {all_metrics[i][metric]}')

@@ -22,30 +22,23 @@ class Speaker:
     
     # Get the directions for each agent
     def direct(self, approach):
+        directions = []
         if isinstance(approach, list):
-            directions = self.direct_with_cdl(approach)
+            obstacles = [Point(obstacle).buffer(self.obstacle_radius) for obstacle in self.obstacles]
+
+            for agent, goal in zip(self.agents, self.goals):
+                agent_idx = CDL.localize(agent, approach)
+                goal_idx = CDL.localize(goal, approach)
+                
+                safe_graph = CDL.get_safe_graph(approach, obstacles)
+                
+                try:
+                    directions += [nx.astar_path(safe_graph, agent_idx, goal_idx)]
+                except (nx.NodeNotFound, nx.NetworkXNoPath):
+                    directions += [None]
+            
         else:
-            directions = []
             for agent, goal in zip(self.agents, self.goals):
                 directions += [approach.direct(agent, goal, self.obstacles)]
         
-        return directions
-            
-    def direct_with_cdl(self, approach):
-        directions = []
-        
-        obstacles = [Point(obstacle).buffer(self.obstacle_radius) 
-                     for obstacle in self.obstacles]
-    
-        for agent, goal in zip(self.agents, self.goals):
-            agent_idx = CDL.localize(agent, approach)
-            goal_idx = CDL.localize(goal, approach)
-            
-            safe_graph = CDL.get_safe_graph(approach, obstacles)
-            
-            try:
-                directions += [nx.astar_path(safe_graph, agent_idx, goal_idx)]
-            except (nx.NodeNotFound, nx.NetworkXNoPath):
-                directions += [None]
-            
         return directions

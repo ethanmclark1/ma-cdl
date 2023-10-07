@@ -22,7 +22,6 @@ class Discrete(CDL):
         
         self.tau = 5e-3
         self.alpha = 1e-4
-        self.gamma = 0.99
         self.batch_size = 256
         self.granularity = 0.20
         self.memory_size = 30000
@@ -36,7 +35,6 @@ class Discrete(CDL):
         config = super()._init_wandb(problem_instance)
         config.tau = self.tau
         config.alpha = self.alpha
-        config.gamma = self.gamma 
         config.epsilon = self.epsilon_start
         config.batch_size = self.batch_size
         config.granularity = self.granularity
@@ -100,7 +98,7 @@ class Discrete(CDL):
         target_next_q_values = self.target_dqn(next_state)
         next_q = target_next_q_values.gather(1, next_actions.unsqueeze(1)).view(-1).detach()
         
-        q_hat = reward + (1 - done) * self.gamma * next_q
+        q_hat = reward + (1 - done) * next_q
         
         td_error = torch.abs(q_hat - q).detach()
         

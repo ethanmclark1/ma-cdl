@@ -1,52 +1,52 @@
-import networkx as nx
+import geopandas as gpd
+from sklearn.cluster import KMeans
+from longsgis import voronoiDiagram4plg
 
 from languages.utils.cdl import CDL
-from shapely import Point, MultiPoint, Polygon, MultiPolygon, voronoi_polygons
+from shapely import MultiPoint, Polygon, MultiPolygon, box
 
-class VoronoiMap:
-    regions = None
-    
-    def __init__(self, show_animation=True):
+class VoronoiMap(CDL):    
+    def __init__(self, scenario, world, show_animation=True):
+        super().__init__(scenario, world)
+        
+        self.num_configs = 15000
         self.show_animation = show_animation
-        self.bbox = Polygon([(-1, -1), (1, -1), (1, 1), (-1, 1)])
-    
-    # Create the voronoi map using Shapely
-    def create_voronoi_map(self, start, goal, obstacles):
-        points = MultiPoint([start, goal, *obstacles])
-        voronoi_map = voronoi_polygons(points)
-        return voronoi_map
+        self.box = box(-1, -1, 1, 1)
+        self.bounding_polygon = Polygon([(-1, -1), (-1, 1), (1, 1), (1, -1)])
+        
+        self.num_k = {
+            'bisect': 1, 
+            'circle': 1, 
+            'cross': 1, 
+            'corners': 4, 
+            'staggered': 4,
+            'quarters': 4, 
+            'scatter': 4, 
+            'stellaris': 5
+            }
+        
+    def get_language(self, problem_instance):
+        obstacles = []
+        for _ in range(self.num_configs):
+            _, _, obs = self._generate_configuration(problem_instance)
+            obstacles.extend(obs)
+        
+        # Cluster obstacles into k clusters to uncover their constraints
+        k_means = KMeans(n_clusters=self.num_k[problem_instance], random_state=0, n_init=10).fit(obstacles)
+        labels = k_means.labels_
+        clusters = {i: [] for i in range(self.num_k[problem_instance])}
+        for label, obstacle in zip(labels, obstacles):
+            clusters[label].append(obstacle)
+        cluster_shapes = [MultiPoint(cluster).convex_hull for cluster in clusters.values()]
+        polygon_with_holes = self.bounding_polygon.difference(MultiPolygon(cluster_shapes))
+        
+        polygons = [polygon_with_holes.exterior] + list(polygon_with_holes.interiors)
+        polygons_gdf = gpd.GeoDataFrame(geometry=polygons)
+        polygons_gdf.crs = 32650
 
-    # Clip VoronoiMap to fit the bounding box
-    def clip_voronoi(self, voronoi_map):
-        clipped_voronoi = []
-        for region in voronoi_map.geoms:
-            clipped_polygon = self.bbox.intersection(region)
-            if clipped_polygon.is_empty:
-                continue
-            elif clipped_polygon.geom_type == 'Polygon':
-                clipped_voronoi.append(clipped_polygon)
-            elif clipped_polygon.geom_type == 'MultiPolygon':
-                clipped_voronoi.extend(clipped_polygon)
-        return MultiPolygon(clipped_voronoi)
-    
-    def direct(self, start, goal, obstacles): 
-        def euclidean_distance(a, b):
-            return Point(VoronoiMap.regions[a].centroid).distance(Point(VoronoiMap.regions[b].centroid))
-          
-        voronoi_map = self.create_voronoi_map(start, goal, obstacles) 
-        clipped_voronoi = self.clip_voronoi(voronoi_map) 
-        VoronoiMap.regions = [*clipped_voronoi.geoms]
-        
-        agent_idx = CDL.localize(Point(start), VoronoiMap.regions)
-        goal_idx = CDL.localize(Point(goal), VoronoiMap.regions)
-        
-        obstacles = [Point(obstacle) for obstacle in obstacles]
-        
-        safe_graph = CDL.get_safe_graph(VoronoiMap.regions, obstacles)
-        
-        try:
-            directions = nx.astar_path(safe_graph, agent_idx, goal_idx, heuristic=euclidean_distance)
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
-            directions = None
+        boundary_gdf = gpd.GeoDataFrame(geometry=[self.box])
+        boundary_gdf.crs = 32650
 
-        return directions
+        voronoi_diagram = voronoiDiagram4plg(polygons_gdf, boundary_gdf)
+
+        return [*voronoi_diagram.geometry]

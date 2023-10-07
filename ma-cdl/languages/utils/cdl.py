@@ -11,7 +11,6 @@ from PIL import Image
 from statistics import mean
 from functools import partial
 from itertools import product
-from abc import ABC, abstractmethod
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
 warnings.filterwarnings('ignore', message='invalid value encountered in intersection')
@@ -23,8 +22,7 @@ BOUNDARIES = [LineString([CORNERS[0], CORNERS[2]]),
               LineString([CORNERS[1], CORNERS[0]])]
 SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
-# Abstract base class for context-dependent language approaches (DuelingDDQN and TD3)
-class CDL(ABC):
+class CDL:
     def __init__(self, scenario, world):
         self.min_lines = 1
         self.max_lines = 8
@@ -200,11 +198,9 @@ class CDL(ABC):
 
         return graph
     
-    @abstractmethod
     def _decrement_exploration(self):
         raise NotImplementedError
     
-    @abstractmethod
     def _select_action(self, state):
         raise NotImplementedError
     
@@ -291,7 +287,6 @@ class CDL(ABC):
         
         return instance_cost
     
-    @abstractmethod
     def _learn(self):
         raise NotImplementedError
 

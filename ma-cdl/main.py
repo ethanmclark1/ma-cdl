@@ -8,14 +8,13 @@ from arguments import get_arguments
 from agents.speaker import Speaker
 from agents.listener import Listener
 
-from languages.discrete import Discrete
-from languages.continuous import Continuous
+from languages.rl import RL
 from languages.baselines.grid_world import GridWorld
 from languages.baselines.voronoi_map import VoronoiMap
 from languages.baselines.direct_path import DirectPath
 
 class MA_CDL():
-    def __init__(self, num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode, max_cycles=50):
+    def __init__(self, num_agents, num_large_obstacles, num_small_obstacles, render_mode, max_cycles=50):
         
         self.env = Signal8.env(
             num_agents=num_agents, 
@@ -28,19 +27,18 @@ class MA_CDL():
         scenario = self.env.unwrapped.scenario
         world = self.env.unwrapped.world
         agent_radius = world.agents[0].radius
-        goal_radius = world.goals[0].radius
         obstacle_radius = world.small_obstacles[0].radius 
         
         # Context-Dependent Language
-        self.rl = Discrete(scenario, world) if action_space == 'discrete' else Continuous(scenario, world)
+        self.rl = RL(scenario, world)
                                 
         # Baselines
         self.grid_world = GridWorld()
-        self.voronoi_map = VoronoiMap()
-        self.direct_path = DirectPath(agent_radius, goal_radius, obstacle_radius)
+        self.voronoi_map = VoronoiMap(scenario, world)
+        self.direct_path = DirectPath(scenario, world)
                 
         self.aerial_agent = Speaker(num_agents, obstacle_radius)
-        self.ground_agent = [Listener(agent_radius, obstacle_radius) for _ in range(num_agents)]
+        self.ground_agent = Listener(agent_radius, obstacle_radius)
     
     def retrieve_languages(self, problem_instance):
         approaches = ['rl', 'voronoi_map', 'grid_world', 'direct_path']
@@ -55,6 +53,8 @@ class MA_CDL():
 
     def act(self, problem_instance, language_set, num_episodes):
         rl = language_set['rl']
+        voronoi_map = language_set['voronoi_map']
+        direct_path = language_set['direct_path']
         approaches = list(language_set.keys())
         direction_set = {approach: None for approach in approaches}
 
@@ -74,17 +74,17 @@ class MA_CDL():
             backup = copy.deepcopy(world)
             
             direction_set['rl'] = self.aerial_agent.direct(rl)
-            direction_set['voronoi_map'] = self.aerial_agent.direct(self.voronoi_map)
+            direction_set['voronoi_map'] = self.aerial_agent.direct(voronoi_map)
             direction_set['grid_world'] = self.aerial_agent.direct(self.grid_world)
-            direction_set['direct_path'] = self.aerial_agent.direct(self.direct_path)
+            direction_set['direct_path'] = direct_path
             
             for approach, directions in direction_set.items(): 
                 # Penalize if no directions are given
                 if None in directions:
                     if approach == 'rl':
                         directions = len(rl)
-                    elif approach == 'voronoi_map':
-                        directions = len(self.voronoi_map.regions)
+                    if approach == 'voronoi_map':
+                        directions = len(voronoi_map)
                     elif approach == 'grid_world':
                         directions = self.grid_world.graph.number_of_nodes()
                     else:
@@ -96,10 +96,9 @@ class MA_CDL():
                 max_directions = max(len(direction) for direction in directions)
                 direction_length[approach].append(max_directions)
 
-                i = 0 
                 observation, _, termination, truncation, _ = self.env.last()
                 while not (termination or truncation):
-                    action = self.ground_agent[i].get_action(observation, directions[i], approach, language_set[approach])
+                    action = self.ground_agent.get_action(observation, directions, approach, language_set[approach])
 
                     # Epsisode terminates if ground agent doesn't adhere to directions
                     if action is not None:
@@ -116,9 +115,6 @@ class MA_CDL():
                         self.env.truncations['agent_0'] = False
                         break   
                     
-                    i += 1
-                    i %= len(directions)
-                    
                 self.env.unwrapped.steps = 0
                 self.env.unwrapped.world = copy.deepcopy(backup)
         
@@ -128,8 +124,8 @@ class MA_CDL():
         
 
 if __name__ == '__main__':
-    num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode = get_arguments()
-    ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, action_space, render_mode)
+    num_agents, num_large_obstacles, num_small_obstacles, render_mode = get_arguments()
+    ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, render_mode)
 
     all_metrics = []
     num_episodes = 10000

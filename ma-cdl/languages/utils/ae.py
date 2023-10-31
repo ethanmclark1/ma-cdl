@@ -19,9 +19,9 @@ IMAGE_SIZE = (64, 64)
 
 
 class AE:
-    def __init__(self, output_dims, rng, max_lines, action_set=None):
+    def __init__(self, output_dims, rng, action_set):
         self.model = Autoencoder(output_dims)
-        self.name = f'Discrete{self.__class__.__name__}' if action_set is not None else f'Continuous{self.__class__.__name__}'
+        self.name = self.__class__.__name__
         
         try:
             state_dict = torch.load(f'ma-cdl/languages/history/{self.name}.pth')
@@ -29,7 +29,7 @@ class AE:
         except:
             self._init_hyperparams()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, self.num_train_epochs, max_lines, action_set)
+            self.dataset = ImageDataset(rng, self.num_train_epochs, action_set)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
             self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
             self._train()
@@ -173,17 +173,12 @@ class AE:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, rng, num_episodes, max_lines, action_set):
+    def __init__(self, rng, num_episodes, action_set):
         self.rng = rng
         self.num_episodes = num_episodes
-        self.max_lines = max_lines
+        self.max_lines = len(action_set)
         
-        if action_set is not None:
-            self.name = 'discrete'
-            self.action_selection = partial(self.rng.choice, a=action_set)
-        else:
-            self.name = 'continuous'
-            self.action_selection = partial(self.rng.uniform, low=-1, high=1, size=3)
+        self.action_selection = partial(self.rng.choice, a=action_set)
         
         try:
             self.images = self.load_images()
@@ -198,7 +193,7 @@ class ImageDataset(Dataset):
 
     def load_images(self):
         images = []
-        image_folder = f'languages/history/images/{self.name}'
+        image_folder = 'languages/history/images'
         image_files = sorted(os.listdir(image_folder))
 
         for image_file in image_files:
@@ -213,7 +208,7 @@ class ImageDataset(Dataset):
         return images
 
     def save_image(self, img, idx):
-        save_path = f'languages/history/images/{self.name}'
+        save_path = 'languages/history/images/'
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         img_path = os.path.join(save_path, f'image_{idx}.png')

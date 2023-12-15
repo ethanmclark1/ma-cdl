@@ -25,7 +25,7 @@ class CommutativeRL(CDL):
         self._create_candidate_set_of_lines()
         
         self.action_dims = len(self.candidate_lines)
-        self.autoencoder = AE(self.state_dims, self.rng)
+        self.autoencoder = AE(self.candidate_lines, self.state_dims, self.max_lines, self.rng)
 
     def _init_hyperparams(self):
         num_records = 10

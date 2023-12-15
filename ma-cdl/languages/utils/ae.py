@@ -6,7 +6,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from PIL import Image
-from functools import partial
 
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -19,7 +18,7 @@ IMAGE_SIZE = (64, 64)
 
 
 class AE:
-    def __init__(self, output_dims, rng, action_set):
+    def __init__(self, candidate_lines, output_dims, max_lines, rng):
         self.model = Autoencoder(output_dims)
         self.name = self.__class__.__name__
         
@@ -29,7 +28,7 @@ class AE:
         except:
             self._init_hyperparams()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(rng, self.num_train_epochs, action_set)
+            self.dataset = ImageDataset(candidate_lines, rng, max_lines, self.num_train_epochs)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
             self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
             self._train()
@@ -173,12 +172,11 @@ class AE:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, rng, num_episodes, action_set):
+    def __init__(self, candidate_lines, rng, max_lines, num_episodes):
+        self.candidate_lines = candidate_lines
         self.rng = rng
+        self.max_lines = max_lines
         self.num_episodes = num_episodes
-        self.max_lines = len(action_set)
-        
-        self.action_selection = partial(self.rng.choice, a=action_set)
         
         try:
             self.images = self.load_images()
@@ -220,11 +218,11 @@ class ImageDataset(Dataset):
         image_idx = len(images)
         for _ in range(self.num_episodes):
             done = False
-            num_action = 1
-            prev_num_lines = 4
+            num_action = 0
             valid_lines = set()
             while not done:
-                line = self.action_selection()
+                num_action += 1
+                line = self.rng.choice(self.candidate_lines)
                 linestring = CDL.get_shapely_linestring(line)
                 valid = CDL.get_valid_lines(linestring)
                 valid_lines.update(valid)
@@ -235,11 +233,8 @@ class ImageDataset(Dataset):
                 self.save_image(pixel_tensor, image_idx)
                 image_idx += 1
 
-                if len(valid_lines) == prev_num_lines or num_action == self.max_lines:
+                if line == self.candidate_lines[0] or num_action == self.max_lines:
                     done = True
                     continue
-
-                prev_num_lines = len(valid_lines)
-                num_action += 1
 
         return images

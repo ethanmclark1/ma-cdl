@@ -1,14 +1,11 @@
 import os
-import io
 import pickle
 import warnings
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from PIL import Image
 from statistics import mean
-from functools import partial
 from itertools import product
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
 
@@ -25,16 +22,15 @@ class CDL:
     def __init__(self, scenario, world):
         self.world = world
         self.scenario = scenario
-        self.configs_to_consider = 200
-        self.rng = np.random.default_rng(seed=42)
         
         self.buffer = None
-        self.state_dim = 128
+        self.max_action = 8
+        self.state_dims = 128
         self.valid_lines = set()
         self.name = self.__class__.__name__
-
-        self.granularity = 0.20
-        self._create_candidate_set_of_lines()
+        
+        self.configs_to_consider = 25
+        self.rng = np.random.default_rng(seed=42)
         self.obstacle_radius = world.large_obstacles[0].radius
     
     def _save(self, approach, problem_instance, language):
@@ -74,26 +70,10 @@ class CDL:
         plt.cla()
         plt.clf()
         plt.close('all')
-        
-    # Generate possible set of lines to choose from
-    def _create_candidate_set_of_lines(self):
-        self.candidate_lines = []
-        granularity = int(self.granularity * 100)
-        
-        # termination line
-        self.candidate_lines += [(0, 0, 0)]
-        
-        # vertical/horizontal lines
-        for i in range(-100 + granularity, 100, granularity):
-            i /= 1000
-            self.candidate_lines += [(0.1, 0, i)] # vertical lines
-            self.candidate_lines += [(0, 0.1, i)] # horizontal lines
-        
-        # diagonal lines
-        for i in range(-200 + granularity, 200, granularity):
-            i /= 1000
-            self.candidate_lines += [(0.1, 0.1, i)]
-            self.candidate_lines += [(-0.1, 0.1, i)]
+    
+    @staticmethod
+    def _get_start_regions():
+        return SQUARE
             
     # Generate shapely linestring (startpoint & endpoint) from standard form of line (Ax + By + C = 0)
     @staticmethod
@@ -209,6 +189,7 @@ class CDL:
         graph = CDL.get_safe_graph(regions, obstacles_with_size)
         start_region = CDL.localize(start, regions)
         goal_region = CDL.localize(goal, regions)
+        
         path = []
         try:
             path = nx.astar_path(graph, start_region, goal_region, heuristic=euclidean_distance)
@@ -225,10 +206,8 @@ class CDL:
         1. Mean of unsafe area
         2. Variance of unsafe_area
     """
-    def optimizer(self, regions, problem_instance):  
-        instance_cost = -8
-        
-        if len(regions) > 1:
+    def _calc_utility(self, problem_instance, regions):          
+        if isinstance(regions, list):
             safe_area = []
             efficiency = len(regions)
             for _ in range(self.configs_to_consider):
@@ -237,27 +216,35 @@ class CDL:
                 safe_area.append(config_cost)
         
             safe_area_mu = mean(safe_area)
-            instance_cost = safe_area_mu - 0.2 * efficiency
+            utility = safe_area_mu - 0.2 * efficiency
         
-        return instance_cost
-
-    # Overlay new line in the environment
-    def _step(self, problem_instance, action, num_lines):
+        return utility
+    
+    # r(s,a,s') = u(s') - u(s) - c(a)
+    def _get_reward(self, problem_instance, regions, action, next_regions, num_action):        
         reward = 0
-        done = False
-        prev_num_lines = max(len(self.valid_lines), 4)
         
-        line = self.candidate_lines[action]
+        timeout = num_action == self.max_action
+        done = np.array_equal(action, self.candidate_lines[0])
         
-        linestring = CDL.get_shapely_linestring(line)
+        # TODO: Fix positive reward for worse utility
+        if not done:
+            util_s = self._calc_utility(problem_instance, regions)
+            util_s_prime = self._calc_utility(problem_instance, next_regions)
+            reward = util_s_prime - util_s - (self.action_cost * num_action)
+            
+        return reward, (done or timeout)
+            
+    # Overlay line in the environment
+    def _step(self, problem_instance, regions, action, num_action):   
+        linestring = CDL.get_shapely_linestring(action)
         valid_lines = CDL.get_valid_lines(linestring)
         self.valid_lines.update(valid_lines)
-        regions = CDL.create_regions(list(self.valid_lines))
+        next_regions = CDL.create_regions(list(self.valid_lines))
+
+        reward, done = self._get_reward(problem_instance, regions, action, next_regions, num_action)
         
-        if len(self.valid_lines) == prev_num_lines or num_lines == self.max_actions:
-            done = True
-            reward = self.action_cost * self.num_lines
-            reward += self.optimizer(regions, problem_instance)
+        if done:
             self.valid_lines.clear()
-        
-        return reward, done, regions
+                
+        return reward, next_regions, done

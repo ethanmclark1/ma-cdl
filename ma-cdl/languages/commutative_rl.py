@@ -4,9 +4,9 @@ import wandb
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 
 from PIL import Image
-from torch.nn import MSELoss
 from languages.utils.ae import AE
 from languages.utils.cdl import CDL
 from languages.utils.networks import DQN
@@ -25,17 +25,17 @@ class CommutativeRL(CDL):
         self._create_candidate_set_of_lines()
         
         self.action_dims = len(self.candidate_lines)
-        self.autoencoder = AE(self.candidate_lines, self.state_dims, self.max_lines, self.rng)
+        self.autoencoder = AE(self.candidate_lines, self.state_dims, self.max_action, self.rng)
 
     def _init_hyperparams(self):
         num_records = 10
         
+        self.tau = 0.001
         self.alpha = 0.0007
-        self.batch_size = 512
+        self.batch_size = 5
         self.granularity = 0.20
-        self.action_cost = -0.25
+        self.action_cost = 0.25
         self.epsilon_start = 1.0
-        self.dummy_episodes = 200
         self.num_episodes = 10000
         self.memory_size = 100000
         self.epsilon_decay = 0.999
@@ -51,7 +51,6 @@ class CommutativeRL(CDL):
         config.memory_size = self.memory_size
         config.num_episodes = self.num_episodes
         config.epsilon_decay = self.epsilon_decay
-        config.dummy_episodes = self.dummy_episodes
         
     # Log image of partitioned regions to Weights & Biases
     def _log_regions(self, problem_instance, title_name, title_data, regions, reward):
@@ -87,6 +86,10 @@ class CommutativeRL(CDL):
             i /= 1000
             self.candidate_lines += [(0.1, 0.1, i)]
             self.candidate_lines += [(-0.1, 0.1, i)]
+        
+    def _update_target_network(self):
+        for target_param, local_param in zip(self.target_dqn.parameters(), self.dqn.parameters()):
+            target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)
             
     def _generate_state(self):
         num_actions = self.rng.choice(self.max_action)
@@ -101,12 +104,14 @@ class CommutativeRL(CDL):
         
     def _select_action(self, state):
         if self.rng.random() < self.epsilon:
-            action = self.rng.choice(self.candidate_lines)
+            idx = self.rng.choice(len(self.candidate_lines))
+            action = self.candidate_lines[idx]
         else:
             with torch.no_grad():
                 q_values = self.dqn(torch.tensor(state))
-                action = self.candidate_lines[q_values.argmax().item()]
-        return action
+                idx = q_values.argmax().item()
+                action = self.candidate_lines[idx]
+        return action, idx
     
     def _step(self, problem_instance, regions, action, num_action):
         reward, next_regions, done = super()._step(problem_instance, regions, action, num_action)
@@ -114,30 +119,72 @@ class CommutativeRL(CDL):
         
         return reward, next_state, done, next_regions
     
-    # TODO: Redo learning step
+    """
+    Update Rule 0: Traditional Q-Update
+    Q(s_1, b) = Q(s_1, b) + alpha * (r_1 + * max_a Q(s', a) - Q(s_1, b))
+    Update Rule 1: Commutative Q-Update
+    Q(s_2, a) = Q(s_2, a) + alpha * (r_0 - r_2 + r_1 + max_a Q(s', a) - Q(s_2, a))
+    """
     def _learn(self):
+        loss = 0
+        
         if self.buffer.real_size < self.batch_size:
-            return 0
+            return loss
+
+        sample = self.buffer.sample(self.batch_size)
+        states, actions, rewards, next_states, dones, prev_action_seqs, prev_actions, prev_rewards, action_seqs = sample
+
+        # Step 1: Traditional Q-Update        
+        q_values = self.dqn(states)
+        next_q_values = self.target_dqn(next_states)
+        target_q_values = rewards + (1 - dones) * torch.max(next_q_values, dim=1).values
+        selected_q_values = torch.gather(q_values, 1, actions).squeeze()
+        loss += F.mse_loss(selected_q_values, target_q_values)
         
-        state, action, reward, next_state, done = self.buffer.sample(self.batch_size)
+        # Step 2: Commutative Update
+        s_2 = torch.empty(self.batch_size, self.state_dims)
+        r_2 = torch.empty(self.batch_size)
         
-        # Compute loss
-        q_values = self.dqn(state).gather(1, action.long())
-        with torch.no_grad():
-            next_q_values = self.target_dqn(next_state).max(1)[0].unsqueeze(1)
-            target_q_values = reward + (1 - done) * self.gamma * next_q_values
-        loss = MSELoss()(q_values, target_q_values)
+        s = prev_action_seqs
+        a = prev_actions
+        r_0 = prev_rewards
         
-        # Update networks
+        s_1 = states
+        b = actions
+        r_1 = rewards
+        s_prime = next_states
+        
+        # TODO: Make sure to remove -1 in the indices
+        for i, (action_seq, action) in enumerate(zip(s, b)):
+            action_seq = tuple(action_seq.tolist())
+            action = action.item()
+            tmp_s2, tmp_r2 = self.ptr_lst.get((action_seq, action), (None, None))
+            # TODO: Remove sample from batch
+            if tmp_s2 is None:
+                tmp_s2 = torch.zeros(self.state_dims)
+                tmp_r2 = torch.zeros(1)
+            s_2[i] = torch.as_tensor(tmp_s2)
+            r_2[i] = torch.as_tensor(tmp_r2)
+        
+        q_values = self.dqn(s_1)
+        next_q_values = self.target_dqn(s_prime)
+        target_q_values = r_0 - r_2 + r_1 + (1 - dones) * torch.max(next_q_values, dim=1).values
+        selected_q_values = torch.gather(q_values, 1, a).squeeze()
+        loss += F.mse_loss(selected_q_values, target_q_values)
+        
+        self.ptr_lst[(tuple(s_1), b)] = (s_prime, r_1)
+        
         self.dqn.optim.zero_grad()
         loss.backward()
         self.dqn.optim.step()
         
-        # Update target network
-        self._update_target_network()
+        if self.iterations % 100 == 0:
+            self._update_target_network()                
         
+        self.iterations += 1
         return loss.item()
     
+    # index_seq is a proxy for the state
     def _train(self, problem_instance):
         losses = []
         rewards = []
@@ -148,20 +195,38 @@ class CommutativeRL(CDL):
         for episode in range(self.num_episodes):
             done = False
             num_action = 0
-            action_seq = []
             episode_reward = 0
+            
+            index_seq = []
+            action_seq = []
+            prev_index = None
+            prev_reward = None
+            prev_index_seq = []
             state, regions = self._generate_state()
             while not done:
+                # TODO: Figure out when to add index to index_seq
                 num_action += 1
-                action = self._select_action(state)
+                action, index = self._select_action(state)
                 reward, next_state, done, next_regions = self._step(problem_instance, regions, action, num_action)
                 
-                self.buffer.add((state, action, reward, next_state, done))
+                index_seq += [index]
+                index_seq = sorted(index_seq)
+                filled_index_seq = index_seq + (self.max_action - len(index_seq)) * [-1]
+                filled_prev_index_seq = prev_index_seq + (self.max_action - len(prev_index_seq)) * [-1]
+                
+                self.buffer.add((state, index, reward, next_state, done, filled_index_seq, filled_prev_index_seq, prev_index, prev_reward))
+                
+                self.ptr_lst[(tuple(filled_index_seq), index)] = (next_state, reward)
+                prev_index = index
+                prev_reward = reward
+                prev_index_seq = index_seq.copy()
+
                 state = next_state
                 regions = next_regions
+                
                 action_seq += [action]
                 episode_reward += reward
-
+                
             loss = self._learn()
             self.epsilon *= self.epsilon_decay
 
@@ -186,12 +251,12 @@ class CommutativeRL(CDL):
         # self._init_wandb(problem_instance)
         
         self.ptr_lst = {}
-        self.previous_sample = None
+        self.iterations = 0
         self.epsilon = self.epsilon_start
         
         self.dqn = DQN(self.state_dims, self.action_dims, self.alpha)
         self.target_dqn = copy.deepcopy(self.dqn)
-        self.buffer = ReplayBuffer(self.state_dims, 1, self.memory_size)
+        self.buffer = ReplayBuffer(self.state_dims, 1, self.memory_size, self.max_action)
         
         best_lines, best_regions, best_reward = self._train(problem_instance)
         best_lines = list(map(lambda x: self.candidate_lines[x], best_lines))

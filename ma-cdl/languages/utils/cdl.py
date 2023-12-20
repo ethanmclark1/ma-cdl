@@ -1,10 +1,13 @@
+import io
 import os
+import wandb
 import pickle
 import warnings
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
+from PIL import Image
 from statistics import mean
 from itertools import product
 from shapely.geometry import Point, LineString, MultiLineString, Polygon
@@ -51,6 +54,16 @@ class CDL:
             language = pickle.load(f)
         return language
     
+    def _init_wandb(self, problem_instance):
+        wandb.init(
+            project='ma-cdl', 
+            entity='ethanmclark1', 
+            name=f'{self.__class__.__name__}/{problem_instance.capitalize()}'
+            )
+        
+        config = wandb.config
+        return config
+    
     # Visualize regions that define the language
     def _visualize(self, approach, problem_instance, language):
         plt.clf()
@@ -70,10 +83,22 @@ class CDL:
         plt.cla()
         plt.clf()
         plt.close('all')
-    
-    @staticmethod
-    def _get_start_regions():
-        return SQUARE
+        
+    # Log image of partitioned regions to Weights & Biases
+    def _log_regions(self, problem_instance, title_name, title_data, regions, reward):
+        _, ax = plt.subplots()
+        problem_instance = problem_instance.capitalize()
+        for idx, region in enumerate(regions):
+            ax.fill(*region.exterior.xy)
+            ax.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
+        ax.set_title(f'Problem Instance: {problem_instance}   {title_name.capitalize()}: {title_data}   Reward: {reward:.2f}')
+
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        pil_image = Image.open(buffer)
+        plt.close()
+        wandb.log({"image": wandb.Image(pil_image)})
             
     # Generate shapely linestring (startpoint & endpoint) from standard form of line (Ax + By + C = 0)
     @staticmethod
@@ -137,6 +162,17 @@ class CDL:
         except:
             region_idx = None
         return region_idx
+    
+    def _generate_state(self):
+        num_actions = self.rng.choice(self.max_action)
+        actions = self.rng.choice(self.candidate_lines[1:], size=num_actions, replace=False)
+        linestrings = CDL.get_shapely_linestring(actions)
+        valid_lines = CDL.get_valid_lines(linestrings)
+        self.valid_lines.update(valid_lines)
+        regions = CDL.create_regions(list(self.valid_lines))
+        state = self.autoencoder.get_state(regions)
+        
+        return state, regions
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):
@@ -180,6 +216,7 @@ class CDL:
     Calculate cost of a configuration (i.e. start position, goal position, and obstacle positions)
     with respect to the regions based on the amount of unsafe area (flexibility).
     """
+    # TODO: Figure out exception handling
     def _config_cost(self, start, goal, obstacles, regions): 
         def euclidean_distance(a, b):
             return regions[a].centroid.distance(regions[b].centroid)
@@ -196,7 +233,7 @@ class CDL:
             safe_area = [regions[idx].area for idx in path]
             avg_safe_area = mean(safe_area)
         except (nx.NodeNotFound, nx.NetworkXNoPath):
-            avg_safe_area = -6
+            avg_safe_area = 0
             
         return avg_safe_area
     
@@ -206,6 +243,7 @@ class CDL:
         1. Mean of unsafe area
         2. Variance of unsafe_area
     """
+    # TODO: Figure out sign of utility
     def _calc_utility(self, problem_instance, regions):          
         if isinstance(regions, list):
             safe_area = []
@@ -215,8 +253,7 @@ class CDL:
                 config_cost = self._config_cost(start, goal, obstacles, regions)
                 safe_area.append(config_cost)
         
-            safe_area_mu = mean(safe_area)
-            utility = safe_area_mu - 0.2 * efficiency
+            utility = mean(safe_area) - (0.2 * efficiency)
         
         return utility
     
@@ -227,7 +264,6 @@ class CDL:
         timeout = num_action == self.max_action
         done = np.array_equal(action, self.candidate_lines[0])
         
-        # TODO: Fix positive reward for worse utility
         if not done:
             util_s = self._calc_utility(problem_instance, regions)
             util_s_prime = self._calc_utility(problem_instance, next_regions)
@@ -246,5 +282,23 @@ class CDL:
         
         if done:
             self.valid_lines.clear()
-                
-        return reward, next_regions, done
+            
+        next_state = self.autoencoder.get_state(next_regions)
+        return reward, done, next_regions, next_state
+    
+    def get_language(self, problem_instance):
+        approach = self.__class__.__name__
+        try:
+            language = self._load(approach, problem_instance)
+        except FileNotFoundError:
+            print(f'No stored language for {approach} on the {problem_instance.capitalize()} problem instance.')
+            print('Generating new language...\n')
+            lines = self._generate_language(problem_instance)
+            linestrings = CDL.get_shapely_linestring(lines)
+            valid_lines = CDL.get_valid_lines(linestrings)
+            language = CDL.create_regions(valid_lines)
+            self._visualize(approach, problem_instance, language)
+            self._save(approach, problem_instance, language)
+        
+        return language
+        

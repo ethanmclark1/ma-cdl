@@ -29,6 +29,7 @@ class CDL:
         self.buffer = None
         self.max_action = 8
         self.state_dims = 128
+        self.action_cost = 0.05
         self.valid_lines = set()
         self.name = self.__class__.__name__
         
@@ -216,7 +217,6 @@ class CDL:
     Calculate cost of a configuration (i.e. start position, goal position, and obstacle positions)
     with respect to the regions based on the amount of unsafe area (flexibility).
     """
-    # TODO: Figure out exception handling
     def _config_cost(self, start, goal, obstacles, regions): 
         def euclidean_distance(a, b):
             return regions[a].centroid.distance(regions[b].centroid)
@@ -243,17 +243,15 @@ class CDL:
         1. Mean of unsafe area
         2. Variance of unsafe_area
     """
-    # TODO: Figure out sign of utility
     def _calc_utility(self, problem_instance, regions):          
         if isinstance(regions, list):
             safe_area = []
-            efficiency = len(regions)
             for _ in range(self.configs_to_consider):
                 start, goal, obstacles = self._generate_configuration(problem_instance)
                 config_cost = self._config_cost(start, goal, obstacles, regions)
                 safe_area.append(config_cost)
         
-            utility = mean(safe_area) - (0.2 * efficiency)
+            utility = mean(safe_area)
         
         return utility
     

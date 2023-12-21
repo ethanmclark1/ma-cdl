@@ -12,6 +12,12 @@ from languages.utils.replay_buffer import ReplayBuffer, CommutativeReplayBuffer
 class BasicDDPG(CDL):
     def __init__(self, scenario, world):
         super(BasicDDPG, self).__init__(scenario, world)
+        self._init_hyperparams()
+        
+        self.buffer = None
+        
+        self.action_dims = 3
+        self.autoencoder = AE(self.state_dims, self.max_action, self.rng)
         
     def _init_hyperparams(self):
         pass

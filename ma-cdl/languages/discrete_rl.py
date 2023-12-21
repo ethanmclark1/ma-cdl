@@ -22,25 +22,25 @@ class BasicDQN(CDL):
         self._create_candidate_set_of_lines()
         
         self.action_dims = len(self.candidate_lines)
-        self.autoencoder = AE(self.candidate_lines, self.state_dims, self.max_action, self.rng)
+        self.autoencoder = AE(self.state_dims, self.max_action, self.rng, self.candidate_lines)
 
     def _init_hyperparams(self):
         num_records = 10
         
         self.tau = 0.001
         self.alpha = 0.0007
-        self.batch_size = 5
+        self.batch_size = 128
         self.sma_window = 1000
         self.granularity = 0.20
-        self.action_cost = 0.25
         self.epsilon_start = 1.0
-        self.num_episodes = 10000
+        self.num_episodes = 7500
         self.memory_size = 100000
         self.epsilon_decay = 0.999
         self.record_freq = self.num_episodes // num_records
             
     def _init_wandb(self, problem_instance):
         config = super()._init_wandb(problem_instance)
+        config.tau = self.tau
         config.alpha = self.alpha
         config.batch_size = self.batch_size
         config.granuarlity = self.granularity 
@@ -92,7 +92,7 @@ class BasicDQN(CDL):
     def _learn(self):
         loss = 0
         if self.buffer.real_size < self.batch_size:
-            return loss, None, None
+            return loss, None
 
         indices = self.buffer.sample(self.batch_size)
         
@@ -108,7 +108,7 @@ class BasicDQN(CDL):
         selected_q_values = torch.gather(q_values, 1, actions).squeeze(-1)
         loss += F.mse_loss(selected_q_values, target_q_values)       
         
-        return loss, (states, actions, rewards, next_states, dones), indices
+        return loss, indices
     
     def _train(self, problem_instance):
         losses = []
@@ -130,18 +130,18 @@ class BasicDQN(CDL):
                 regions = next_regions
                 episode_reward += reward
                 
-            loss, _, _ = self._learn()
-            self._update(episode, loss)
+            loss, _ = self._learn()
+            loss = self._update(episode, loss)
             self.epsilon *= self.epsilon_decay
 
-            losses.append(loss.item())
+            losses.append(loss)
             rewards.append(episode_reward)
             avg_losses = np.mean(losses[-self.sma_window:])
             avg_rewards = np.mean(rewards[-self.sma_window:])
-            wandb.log({"Average Loss": avg_losses})
-            wandb.log({"Average Reward": avg_rewards})
-            if episode % self.record_freq == 0 and len(regions) > 1:
-                self._log_regions(problem_instance, 'Episode', episode, regions, reward)
+            # wandb.log({"Average Loss": avg_losses})
+            # wandb.log({"Average Reward": avg_rewards})
+            # if episode % self.record_freq == 0 and len(regions) > 1:
+            #     self._log_regions(problem_instance, 'Episode', episode, regions, reward)
     
     # TODO: Make sure lines are in the correct format for logging regions
     def _get_final_lines(self, problem_instance):
@@ -172,7 +172,7 @@ class BasicDQN(CDL):
         if buffer is None:
             self.buffer = ReplayBuffer(self.state_dims, 1, self.memory_size)
         
-        self._init_wandb(problem_instance)
+        # self._init_wandb(problem_instance)
         self._train(problem_instance)
         language, reward = self._get_final_language(problem_instance)
         
@@ -195,14 +195,18 @@ class CommutativeDQN(BasicDQN):
     Q(s_2, a) = Q(s_2, a) + alpha * (r_0 - r_2 + r_1 + max_a Q(s', a) - Q(s_2, a))
     """
     def _learn(self):
-        loss, batch, idxs = super()._learn()
+        loss, idxs = super()._learn()
         
-        if batch is None:
+        if idxs is None:
             return loss
         
-        states, actions, rewards, next_states, dones = batch
-        
+        states = self.buffer.state[idxs]
         action_seqs = self.buffer.action_seq[idxs]
+        actions = self.buffer.action[idxs]
+        rewards = self.buffer.reward[idxs]
+        next_states = self.buffer.next_state[idxs]
+        dones = self.buffer.done[idxs]
+        
         prev_action_seqs = self.buffer.prev_action_seq[idxs]
         prev_actions = self.buffer.prev_action[idxs]
         prev_rewards = self.buffer.prev_reward[idxs]

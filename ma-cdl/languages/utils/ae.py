@@ -18,9 +18,12 @@ IMAGE_SIZE = (64, 64)
 
 
 class AE:
-    def __init__(self, candidate_lines, output_dims, max_lines, rng):
+    def __init__(self, output_dims, max_lines, rng, candidate_lines=None):
         self.model = Autoencoder(output_dims)
-        self.name = self.__class__.__name__
+        if candidate_lines is None:
+            self.name = f'Continuous{self.__class__.__name__}'
+        else: 
+            self.name = f'Discrete{self.__class__.__name__}'
         
         try:
             state_dict = torch.load(f'ma-cdl/languages/history/{self.name}.pth')
@@ -28,7 +31,7 @@ class AE:
         except:
             self._init_hyperparams()
             self.loss = torch.nn.MSELoss()
-            self.dataset = ImageDataset(candidate_lines, rng, max_lines, self.num_train_epochs)
+            self.dataset = ImageDataset(rng, max_lines, self.num_train_epochs, candidate_lines)
             self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
             self.scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.1, patience=10)
             self._train()
@@ -172,11 +175,17 @@ class AE:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, candidate_lines, rng, max_lines, num_episodes):
-        self.candidate_lines = candidate_lines
+    def __init__(self, rng, max_lines, num_episodes, candidate_lines=None):
         self.rng = rng
         self.max_lines = max_lines
         self.num_episodes = num_episodes
+        
+        if candidate_lines is None:
+            self.action_selection = lambda: self.rng.uniform(size=3)
+            self.line_type = 'continuous'
+        else:
+            self.action_selection = lambda: self.rng.choice(candidate_lines)
+            self.line_type = 'discrete'
         
         try:
             self.images = self.load_images()
@@ -191,7 +200,7 @@ class ImageDataset(Dataset):
 
     def load_images(self):
         images = []
-        image_folder = 'languages/history/images'
+        image_folder = f'languages/history/images/{self.line_type}'
         image_files = sorted(os.listdir(image_folder))
 
         for image_file in image_files:
@@ -206,7 +215,7 @@ class ImageDataset(Dataset):
         return images
 
     def save_image(self, img, idx):
-        save_path = 'languages/history/images/'
+        save_path = f'languages/history/images/{self.line_type}'
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         img_path = os.path.join(save_path, f'image_{idx}.png')
@@ -222,7 +231,7 @@ class ImageDataset(Dataset):
             valid_lines = set()
             while not done:
                 num_action += 1
-                line = self.rng.choice(self.candidate_lines)
+                line = self.action_selection()
                 linestring = CDL.get_shapely_linestring(line)
                 valid = CDL.get_valid_lines(linestring)
                 valid_lines.update(valid)

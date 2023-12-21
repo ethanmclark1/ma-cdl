@@ -291,8 +291,8 @@ class CDL:
         except FileNotFoundError:
             print(f'No stored language for {approach} on the {problem_instance.capitalize()} problem instance.')
             print('Generating new language...\n')
-            lines = self._generate_language(problem_instance)
-            linestrings = CDL.get_shapely_linestring(lines)
+            language = self._generate_language(problem_instance)
+            linestrings = CDL.get_shapely_linestring(language)
             valid_lines = CDL.get_valid_lines(linestrings)
             language = CDL.create_regions(valid_lines)
             self._visualize(approach, problem_instance, language)

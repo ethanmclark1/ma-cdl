@@ -27,7 +27,7 @@ class BasicDQN(CDL):
     def _init_hyperparams(self):
         num_records = 10
         
-        self.tau = 0.003
+        self.tau = 0.005
         self.alpha = 0.001
         self.batch_size = 256
         self.sma_window = 100
@@ -164,7 +164,7 @@ class BasicDQN(CDL):
             episode_reward += reward
         
         language = np.array(language).reshape(-1,3)
-        return language, episode_reward
+        return language, regions, episode_reward
 
     # Retrieve optimal set lines for a given problem instance from the training phase
     def _generate_language(self, problem_instance, buffer=None):
@@ -176,9 +176,9 @@ class BasicDQN(CDL):
         
         self._init_wandb(problem_instance)
         self._train(problem_instance)
-        language, reward = self._get_final_lines(problem_instance)
+        language, regions, reward = self._get_final_lines(problem_instance)
         
-        self._log_regions(problem_instance, 'Episode', 'Final', language, reward)
+        self._log_regions(problem_instance, 'Episode', 'Final', regions, reward)
         wandb.log({"Language": language})
         wandb.log({"Final Reward": reward})
         wandb.finish()  

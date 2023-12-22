@@ -44,7 +44,7 @@ class BasicDQN(CDL):
         config.alpha = self.alpha
         config.max_action = self.max_action
         config.batch_size = self.batch_size
-        config.granuarlity = self.granularity 
+        config.granularity = self.granularity 
         config.action_cost = self.action_cost
         config.memory_size = self.memory_size
         config.num_episodes = self.num_episodes
@@ -202,8 +202,6 @@ class CommutativeDQN(BasicDQN):
         if indices is None:
             return loss
         
-        states = self.buffer.state[indices]
-        action_seqs = self.buffer.action_seq[indices]
         actions = self.buffer.action[indices]
         rewards = self.buffer.reward[indices]
         next_states = self.buffer.next_state[indices]
@@ -218,7 +216,6 @@ class CommutativeDQN(BasicDQN):
         r_2 = torch.empty(self.batch_size)
         
         s, a, r_0 = prev_action_seqs, prev_actions, prev_rewards
-        s_1 = states
         b = actions
         r_1 = rewards
         s_prime = next_states
@@ -235,7 +232,6 @@ class CommutativeDQN(BasicDQN):
                 r_2[i] = torch.as_tensor(_r_2)
         
         if len(valid_indices) != 0:
-            s_1 = s_1[valid_indices]
             s_2 = s_2[valid_indices]
             a = a[valid_indices]
             r_0 = r_0[valid_indices]
@@ -243,7 +239,6 @@ class CommutativeDQN(BasicDQN):
             r_2 = r_2[valid_indices]
             s_prime = s_prime[valid_indices]
             dones = dones[valid_indices]
-            action_seqs = action_seqs[valid_indices]
             
             next_q_values = self.target_dqn(s_prime)
             target_q_values = r_0 - r_2 + r_1 + (1 - dones) * torch.max(next_q_values, dim=1).values

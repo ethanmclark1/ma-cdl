@@ -57,18 +57,16 @@ class Autoencoder(nn.Module):
 class DQN(nn.Module):
     def __init__(self, state_dims, action_dim, lr):
         super(DQN, self).__init__()
-        self.l1 = nn.Linear(state_dims, 128)
-        self.l2 = nn.Linear(128, 128)
-        self.l3 = nn.Linear(128, 128)
-        self.l4 = nn.Linear(128, action_dim)
+        self.l1 = nn.Linear(state_dims, 256)
+        self.l2 = nn.Linear(256, 256)
+        self.l3 = nn.Linear(256, action_dim)
         
         self.optim = Adam(self.parameters(), lr=lr)
         
     def forward(self, state):
         x = F.relu(self.l1(state))
         x = F.relu(self.l2(x))
-        x = F.relu(self.l3(x))
-        x = self.l4(x)
+        x = self.l3(x)
         return x
     
 

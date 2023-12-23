@@ -107,8 +107,8 @@ class AE:
 
         # Split the dataset into training and validation sets
         train_set, val_set = random_split(self.dataset, [int(0.8 * len(self.dataset)), len(self.dataset) - int(0.8 * len(self.dataset))])
-        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
-        val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
+        train_loader = DataLoader(train_set, batch_size=self.batch_size)
+        val_loader = DataLoader(val_set, batch_size=self.batch_size)
 
         best_val_loss = float('inf')
         patience_counter = 0
@@ -200,7 +200,7 @@ class ImageDataset(Dataset):
 
     def load_images(self):
         images = []
-        image_folder = f'languages/history/images/{self.line_type}'
+        image_folder = f'ma-cdl/languages/history/images/{self.line_type}'
         image_files = sorted(os.listdir(image_folder))
 
         for image_file in image_files:
@@ -215,7 +215,7 @@ class ImageDataset(Dataset):
         return images
 
     def save_image(self, img, idx):
-        save_path = f'languages/history/images/{self.line_type}'
+        save_path = f'ma-cdl/languages/history/images/{self.line_type}'
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         img_path = os.path.join(save_path, f'image_{idx}.png')
@@ -242,7 +242,7 @@ class ImageDataset(Dataset):
                 self.save_image(pixel_tensor, image_idx)
                 image_idx += 1
 
-                if line == self.candidate_lines[0] or num_action == self.max_lines:
+                if num_action == self.max_lines:
                     done = True
                     continue
 

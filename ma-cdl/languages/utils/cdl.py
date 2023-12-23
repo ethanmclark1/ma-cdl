@@ -48,6 +48,7 @@ class CDL:
             pickle.dump(language, file)
     
     def _load(self, approach, problem_instance):
+        problem_instance = 'cheese'
         directory = f'ma-cdl/languages/history/{approach.lower()}'
         filename = f'{problem_instance}.pkl'
         file_path = os.path.join(directory, filename)
@@ -166,7 +167,12 @@ class CDL:
     
     def _generate_state(self):
         num_actions = self.rng.choice(self.max_action)
-        actions = self.rng.choice(self.candidate_lines[1:], size=num_actions, replace=False)
+        
+        if hasattr(self, 'candidate_lines'):
+            actions = self.rng.choice(self.candidate_lines[1:], size=num_actions, replace=True)
+        else: 
+            actions = self.rng.uniform(size=(num_actions, 3))
+            
         linestrings = CDL.get_shapely_linestring(actions)
         valid_lines = CDL.get_valid_lines(linestrings)
         self.valid_lines.update(valid_lines)
@@ -214,10 +220,10 @@ class CDL:
         return graph
         
     """
-    Calculate cost of a configuration (i.e. start position, goal position, and obstacle positions)
-    with respect to the regions based on the amount of unsafe area (flexibility).
+    Calculate utility of an adaptation with respect to the start, goal, and obstacles
+    based on the amount of unsafe area (flexibility).
     """
-    def _config_cost(self, start, goal, obstacles, regions): 
+    def _config_utility(self, start, goal, obstacles, regions): 
         def euclidean_distance(a, b):
             return regions[a].centroid.distance(regions[b].centroid)
         
@@ -238,7 +244,7 @@ class CDL:
         return avg_safe_area
     
     """ 
-    Calculate cost of a given problem (i.e. all configurations) 
+    Calculate utility of a given problem (i.e. all configurations) 
     with respect to the regions and the given constraints: 
         1. Mean of unsafe area
         2. Variance of unsafe_area
@@ -248,7 +254,7 @@ class CDL:
             safe_area = []
             for _ in range(self.configs_to_consider):
                 start, goal, obstacles = self._generate_configuration(problem_instance)
-                config_cost = self._config_cost(start, goal, obstacles, regions)
+                config_cost = self._config_utility(start, goal, obstacles, regions)
                 safe_area.append(config_cost)
         
             utility = mean(safe_area)
@@ -260,7 +266,10 @@ class CDL:
         reward = 0
         
         timeout = num_action == self.max_action
-        done = np.array_equal(action, self.candidate_lines[0])
+        if hasattr(self, 'candidate_lines'):
+            done = np.array_equal(action, self.candidate_lines[0])
+        else:
+            done = self._is_terminating_action(action)
         
         if not done:
             util_s = self._calc_utility(problem_instance, regions)

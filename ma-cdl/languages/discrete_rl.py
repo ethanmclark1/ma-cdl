@@ -195,55 +195,56 @@ class CommutativeDQN(BasicDQN):
     Update Rule 1: Commutative Q-Update
     Q(s_2, a) = Q(s_2, a) + alpha * (r_0 - r_2 + r_1 + max_a Q(s', a) - Q(s_2, a))
     """
-    def _learn(self):
-        traditional_loss, indices = super()._learn()
-        commutative_loss = 0
+    def _learn(self, episode):
+        if self.buffer.real_size < self.batch_size:
+            return 0
         
-        if indices is None:
-            return traditional_loss
+        loss = 0
         
-        self._update(traditional_loss, update_target=False)
-        traditional_loss = traditional_loss.item()
-        
-        # Step 2: Commutative Q-Update
-        has_previous = self.buffer.has_previous[indices]        
-        valid_indices = torch.nonzero(has_previous, as_tuple=True)[0]
-        
-        s = self.buffer.prev_state_proxy[indices][valid_indices]
-        b = self.buffer.action[indices][valid_indices]
-        
-        key_tuples = [(tuple(_s.tolist()), _b.item()) for _s, _b in zip(s, b)]
-        valid_mask = torch.tensor([self.ptr_lst.get(key, (None, None))[0] is not None for key in key_tuples])
-        
-        if torch.any(valid_mask):
-            s_2 = np.stack([self.ptr_lst[key][0] for i, key in enumerate(key_tuples) if valid_mask[i]])
-            r_2 = np.array([self.ptr_lst[key][1] for i, key in enumerate(key_tuples) if valid_mask[i]])
+        if episode % 2 == 0:
+            loss, _ = super()._learn()
+            loss = self._update(loss)
+        else:
+            indices = self.buffer.sample(self.batch_size)            
             
-            s_2 = torch.from_numpy(s_2).type(torch.float)
-            r_2 = torch.from_numpy(r_2).type(torch.float)
-        
-            a = self.buffer.prev_action[indices][valid_indices][valid_mask]
-            r_0 = self.buffer.prev_reward[indices][valid_indices][valid_mask]
-            r_1 = self.buffer.reward[indices][valid_indices][valid_mask]
-            s_prime = self.buffer.next_state[indices][valid_indices][valid_mask]
-            done = self.buffer.done[indices][valid_indices][valid_mask]
-
-            q_values = self.dqn(s_2)
-            selected_q_values = torch.gather(q_values, 1, a).squeeze(-1)
-            next_q_values = self.target_dqn(s_prime)
-            target_q_values = r_0 - r_2 + r_1 + (1 - done) * torch.max(next_q_values, dim=1).values
-            commutative_loss = F.mse_loss(selected_q_values, target_q_values)
-
-            self._update(commutative_loss)
-            commutative_loss = commutative_loss.item()
+            # Step 2: Commutative Q-Update
+            has_previous = self.buffer.has_previous[indices]        
+            valid_indices = torch.nonzero(has_previous, as_tuple=True)[0]
             
-        return traditional_loss + commutative_loss
+            s = self.buffer.prev_state_proxy[indices][valid_indices]
+            b = self.buffer.action[indices][valid_indices]
+            
+            key_tuples = [(tuple(_s.tolist()), _b.item()) for _s, _b in zip(s, b)]
+            valid_mask = torch.tensor([self.ptr_lst.get(key, (None, None))[0] is not None for key in key_tuples])
+            
+            if torch.any(valid_mask):
+                s_2 = np.stack([self.ptr_lst[key][0] for i, key in enumerate(key_tuples) if valid_mask[i]])
+                r_2 = np.array([self.ptr_lst[key][1] for i, key in enumerate(key_tuples) if valid_mask[i]])
+                
+                s_2 = torch.from_numpy(s_2).type(torch.float)
+                r_2 = torch.from_numpy(r_2).type(torch.float)
+            
+                a = self.buffer.prev_action[indices][valid_indices][valid_mask]
+                r_0 = self.buffer.prev_reward[indices][valid_indices][valid_mask]
+                r_1 = self.buffer.reward[indices][valid_indices][valid_mask]
+                s_prime = self.buffer.next_state[indices][valid_indices][valid_mask]
+                done = self.buffer.done[indices][valid_indices][valid_mask]
+
+                q_values = self.dqn(s_2)
+                selected_q_values = torch.gather(q_values, 1, a).squeeze(-1)
+                next_q_values = self.target_dqn(s_prime)
+                target_q_values = r_0 - r_2 + r_1 + (1 - done) * torch.max(next_q_values, dim=1).values
+                loss = F.mse_loss(selected_q_values, target_q_values)
+
+                loss = self._update(loss)
+            
+        return loss
 
     def _train(self, problem_instance):
         losses = []
         rewards = []
         
-        for _ in range(self.num_episodes):
+        for episode in range(self.num_episodes):
             done = False
             num_action = 0
             episode_reward = 0
@@ -276,7 +277,7 @@ class CommutativeDQN(BasicDQN):
                 regions = next_regions
                 episode_reward += reward
                 
-            loss = self._learn()
+            loss = self._learn(episode)
             self.epsilon *= self.epsilon_decay
 
             losses.append(loss)

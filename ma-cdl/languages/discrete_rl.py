@@ -231,7 +231,12 @@ class CommutativeDQN(BasicDQN):
             target_q_values = r_0 - r_2 + r_1 + (1 - done) * torch.max(next_q_values, dim=1).values
             commutative_loss = F.mse_loss(selected_q_values, target_q_values)
 
-        total_loss = traditional_loss + commutative_loss
+        if commutative_loss == 0:
+            total_loss = traditional_loss
+        else:
+            total_loss = torch.cat([traditional_loss.unsqueeze(-1), commutative_loss.unsqueeze(-1)])
+            total_loss = torch.mean(total_loss)
+            
         total_loss = self._update(total_loss)            
         return total_loss
 

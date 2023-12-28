@@ -28,13 +28,13 @@ class BasicDQN(CDL):
         num_records = 10
         
         self.tau = 0.005
-        self.alpha = 0.001
-        self.batch_size = 256
+        self.alpha = 0.0002
+        self.batch_size = 128
         self.sma_window = 100
         self.granularity = 0.20
         self.epsilon_start = 1.0
+        self.memory_size = 25000
         self.num_episodes = 7500
-        self.memory_size = 30000
         self.epsilon_decay = 0.999
         self.record_freq = self.num_episodes // num_records
             
@@ -49,6 +49,7 @@ class BasicDQN(CDL):
         config.memory_size = self.memory_size
         config.num_episodes = self.num_episodes
         config.epsilon_decay = self.epsilon_decay
+        config.efficiency_factor = self.efficiency_factor
         config.configs_to_consider = self.configs_to_consider
         
     def _create_candidate_set_of_lines(self):
@@ -78,36 +79,36 @@ class BasicDQN(CDL):
                 action_index = self.dqn(torch.tensor(state)).argmax().item()
         return action_index
     
-    def _update(self, loss):
+    def _update(self, loss, update_target=True):
         if not isinstance(loss, int):    
             self.dqn.optim.zero_grad(set_to_none=True)
             loss.backward()
             self.dqn.optim.step()
             loss = loss.item()
         
-        for target_param, local_param in zip(self.target_dqn.parameters(), self.dqn.parameters()):
-            target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)
+        if update_target:
+            for target_param, local_param in zip(self.target_dqn.parameters(), self.dqn.parameters()):
+                target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)
                 
         return loss
             
     def _learn(self):
-        loss = 0
         if self.buffer.real_size < self.batch_size:
-            return loss, None
+            return 0, None
 
         indices = self.buffer.sample(self.batch_size)
         
-        states = self.buffer.state[indices]
-        actions = self.buffer.action[indices]
-        rewards = self.buffer.reward[indices]
-        next_states = self.buffer.next_state[indices]
-        dones = self.buffer.done[indices]
+        state = self.buffer.state[indices]
+        action = self.buffer.action[indices]
+        reward = self.buffer.reward[indices]
+        next_state = self.buffer.next_state[indices]
+        done = self.buffer.done[indices]
         
-        q_values = self.dqn(states)
-        next_q_values = self.target_dqn(next_states)
-        target_q_values = rewards + (1 - dones) * torch.max(next_q_values, dim=1).values
-        selected_q_values = torch.gather(q_values, 1, actions).squeeze(-1)
-        loss += F.mse_loss(selected_q_values, target_q_values)       
+        q_values = self.dqn(state)
+        selected_q_values = torch.gather(q_values, 1, action).squeeze(-1)
+        next_q_values = self.target_dqn(next_state)
+        target_q_values = reward + (1 - done) * torch.max(next_q_values, dim=1).values
+        loss = F.mse_loss(selected_q_values, target_q_values)       
         
         return loss, indices
     
@@ -115,7 +116,7 @@ class BasicDQN(CDL):
         losses = []
         rewards = []
         
-        for episode in range(self.num_episodes):
+        for _ in range(self.num_episodes):
             done = False
             num_action = 0
             episode_reward = 0
@@ -132,17 +133,15 @@ class BasicDQN(CDL):
                 episode_reward += reward
                 
             loss, _ = self._learn()
-            loss = self._update(loss)
+            self._update(loss)
             self.epsilon *= self.epsilon_decay
 
-            losses.append(loss)
+            losses.append(loss.item())
             rewards.append(episode_reward)
             avg_losses = np.mean(losses[-self.sma_window:])
             avg_rewards = np.mean(rewards[-self.sma_window:])
             wandb.log({"Average Loss": avg_losses})
             wandb.log({"Average Reward": avg_rewards})
-            if episode % self.record_freq == 0 and len(regions) > 1:
-                self._log_regions(problem_instance, 'Episode', episode, regions, reward)
     
     def _get_final_lines(self, problem_instance):
         done = False
@@ -197,73 +196,62 @@ class CommutativeDQN(BasicDQN):
     Q(s_2, a) = Q(s_2, a) + alpha * (r_0 - r_2 + r_1 + max_a Q(s', a) - Q(s_2, a))
     """
     def _learn(self):
-        loss, indices = super()._learn()
+        traditional_loss, indices = super()._learn()
+        commutative_loss = 0
         
         if indices is None:
-            return loss
+            return traditional_loss
         
-        actions = self.buffer.action[indices]
-        rewards = self.buffer.reward[indices]
-        next_states = self.buffer.next_state[indices]
-        dones = self.buffer.done[indices]
+        self._update(traditional_loss, update_target=False)
+        traditional_loss = traditional_loss.item()
         
-        prev_action_seqs = self.buffer.prev_action_seq[indices]
-        prev_actions = self.buffer.prev_action[indices]
-        prev_rewards = self.buffer.prev_reward[indices]
+        # Step 2: Commutative Q-Update
+        has_previous = self.buffer.has_previous[indices]        
+        valid_indices = torch.nonzero(has_previous, as_tuple=True)[0]
         
-         # Step 2: Commutative Q-Update
-        s_2 = torch.empty(self.batch_size, self.state_dims)
-        r_2 = torch.empty(self.batch_size)
+        s = self.buffer.prev_state_proxy[indices][valid_indices]
+        b = self.buffer.action[indices][valid_indices]
         
-        s, a, r_0 = prev_action_seqs, prev_actions, prev_rewards
-        b = actions
-        r_1 = rewards
-        s_prime = next_states
+        key_tuples = [(tuple(_s.tolist()), _b.item()) for _s, _b in zip(s, b)]
+        valid_mask = torch.tensor([self.ptr_lst.get(key, (None, None))[0] is not None for key in key_tuples])
         
-        # Retrieve s_2 and r_2 from ptr_lst to get most recent transition for each (s, b)
-        valid_indices = []
-        for i, (_s, _b) in enumerate(zip(s, b)):
-            _s = tuple(_s.tolist())
-            _b = _b.item()
-            _s_2, _r_2 = self.ptr_lst.get((_s, _b), (None, None))
-            if _s_2 is not None:
-                valid_indices.append(i)
-                s_2[i] = torch.as_tensor(_s_2)
-                r_2[i] = torch.as_tensor(_r_2)
-        
-        if len(valid_indices) != 0:
-            s_2 = s_2[valid_indices]
-            a = a[valid_indices]
-            r_0 = r_0[valid_indices]
-            r_1 = r_1[valid_indices]
-            r_2 = r_2[valid_indices]
-            s_prime = s_prime[valid_indices]
-            dones = dones[valid_indices]
+        if torch.any(valid_mask):
+            s_2 = np.stack([self.ptr_lst[key][0] for i, key in enumerate(key_tuples) if valid_mask[i]])
+            r_2 = np.array([self.ptr_lst[key][1] for i, key in enumerate(key_tuples) if valid_mask[i]])
             
-            next_q_values = self.target_dqn(s_prime)
-            target_q_values = r_0 - r_2 + r_1 + (1 - dones) * torch.max(next_q_values, dim=1).values
-            
+            s_2 = torch.from_numpy(s_2).type(torch.float)
+            r_2 = torch.from_numpy(r_2).type(torch.float)
+        
+            a = self.buffer.prev_action[indices][valid_indices][valid_mask]
+            r_0 = self.buffer.prev_reward[indices][valid_indices][valid_mask]
+            r_1 = self.buffer.reward[indices][valid_indices][valid_mask]
+            s_prime = self.buffer.next_state[indices][valid_indices][valid_mask]
+            done = self.buffer.done[indices][valid_indices][valid_mask]
+
             q_values = self.dqn(s_2)
             selected_q_values = torch.gather(q_values, 1, a).squeeze(-1)
-            
-            loss += F.mse_loss(selected_q_values, target_q_values)
-            
-        return loss
+            next_q_values = self.target_dqn(s_prime)
+            target_q_values = r_0 - r_2 + r_1 + (1 - done) * torch.max(next_q_values, dim=1).values
+            commutative_loss = F.mse_loss(selected_q_values, target_q_values)
 
-    # action_seq is a proxy for the state
+            self._update(commutative_loss)
+            commutative_loss = commutative_loss.item()
+            
+        return traditional_loss + commutative_loss
+
     def _train(self, problem_instance):
         losses = []
         rewards = []
         
-        for episode in range(self.num_episodes):
+        for _ in range(self.num_episodes):
             done = False
             num_action = 0
             episode_reward = 0
             
-            _action_seq = []
+            _state_proxy = []
             prev_action = None
             prev_reward = None
-            _prev_action_seq = []
+            _prev_state_proxy = []
             state, regions = self._generate_state()
             while not done:
                 num_action += 1
@@ -271,25 +259,24 @@ class CommutativeDQN(BasicDQN):
                 line = self.candidate_lines[action]
                 reward, done, next_regions, next_state = self._step(problem_instance, regions, line, num_action)
                 
-                action_seq = _action_seq + (self.max_action - len(_action_seq)) * [-1]
-                prev_action_seq = _prev_action_seq + (self.max_action - len(_prev_action_seq)) * [-1]
-                self.buffer.add((state, action_seq, action, reward, next_state, done, prev_action_seq, prev_action, prev_reward))
+                state_proxy = _state_proxy + (self.max_action - len(_state_proxy)) * [0]
+                prev_state_proxy = _prev_state_proxy + (self.max_action - len(_prev_state_proxy)) * [0]
+                self.buffer.add((state, action, reward, next_state, done, prev_state_proxy, prev_action, prev_reward))
                 # (s, a) -> (s', r)
-                self.ptr_lst[(tuple(action_seq), action)] = (next_state, reward)
+                self.ptr_lst[(tuple(state_proxy), action)] = (next_state, reward)
                 
                 prev_action = action
                 prev_reward = reward
-                _prev_action_seq = _action_seq.copy()
-                _action_seq += [action]
-                _action_seq = sorted(_action_seq)
+                _prev_state_proxy = _state_proxy.copy()
+                
+                _state_proxy += [action]
+                _state_proxy = sorted(_state_proxy)
 
                 state = next_state
                 regions = next_regions
-                
                 episode_reward += reward
                 
             loss = self._learn()
-            loss = self._update(loss)
             self.epsilon *= self.epsilon_decay
 
             losses.append(loss)
@@ -298,8 +285,6 @@ class CommutativeDQN(BasicDQN):
             avg_rewards = np.mean(rewards[-self.sma_window:])
             wandb.log({"Average Loss": avg_losses})
             wandb.log({"Average Reward": avg_rewards})
-            if episode % self.record_freq == 0 and len(regions) > 1:
-                self._log_regions(problem_instance, 'Episode', episode, regions, reward)
             
     def _generate_language(self, problem_instance):
         self.ptr_lst = {}

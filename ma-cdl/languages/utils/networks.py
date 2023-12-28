@@ -96,9 +96,9 @@ class Critic(nn.Module):
         self.l3 = nn.Linear(256, 1)
 
         # Q2 architecture
-        self.l5 = nn.Linear(state_dim + action_dim, 256)
-        self.l6 = nn.Linear(256, 256)
-        self.l7 = nn.Linear(256, 1)
+        self.l4 = nn.Linear(state_dim + action_dim, 256)
+        self.l5 = nn.Linear(256, 256)
+        self.l6 = nn.Linear(256, 1)
         
         self.optim = Adam(self.parameters(), lr=lr)
 

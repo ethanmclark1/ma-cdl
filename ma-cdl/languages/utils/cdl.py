@@ -29,7 +29,9 @@ class CDL:
         self.buffer = None
         self.max_action = 8
         self.state_dims = 128
-        self.action_cost = 0.05
+        self.action_cost = 0.10
+        self.efficiency_factor = 0
+        
         self.valid_lines = set()
         self.name = self.__class__.__name__
         
@@ -252,13 +254,13 @@ class CDL:
     def _calc_utility(self, problem_instance, regions):          
         if isinstance(regions, list):
             safe_area = []
+            efficiency = len(regions)
             for _ in range(self.configs_to_consider):
                 start, goal, obstacles = self._generate_configuration(problem_instance)
                 config_cost = self._config_utility(start, goal, obstacles, regions)
                 safe_area.append(config_cost)
-        
-            utility = mean(safe_area)
-        
+
+        utility = mean(safe_area) - (self.efficiency_factor * efficiency)
         return utility
     
     # r(s,a,s') = u(s') - u(s) - c(a)

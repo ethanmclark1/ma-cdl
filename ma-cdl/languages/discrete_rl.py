@@ -107,7 +107,7 @@ class BasicDQN(CDL):
         q_values = self.dqn(state)
         selected_q_values = torch.gather(q_values, 1, action).squeeze(-1)
         next_q_values = self.target_dqn(next_state)
-        target_q_values = reward + (1 - done) * torch.max(next_q_values, dim=1).values
+        target_q_values = reward + ~done * torch.max(next_q_values, dim=1).values
         loss = F.mse_loss(selected_q_values, target_q_values)       
         
         return loss, indices
@@ -120,7 +120,7 @@ class BasicDQN(CDL):
             done = False
             num_action = 0
             episode_reward = 0
-            state, regions = self._generate_state()
+            state, regions, _ = self._generate_state()
             while not done:
                 num_action += 1
                 action = self._select_action(state)
@@ -133,10 +133,10 @@ class BasicDQN(CDL):
                 episode_reward += reward
                 
             loss, _ = self._learn()
-            self._update(loss)
+            loss = self._update(loss)
             self.epsilon *= self.epsilon_decay
 
-            losses.append(loss.item())
+            losses.append(loss)
             rewards.append(episode_reward)
             avg_losses = np.mean(losses[-self.sma_window:])
             avg_rewards = np.mean(rewards[-self.sma_window:])
@@ -228,7 +228,7 @@ class CommutativeDQN(BasicDQN):
             q_values = self.dqn(s_2)
             selected_q_values = torch.gather(q_values, 1, a).squeeze(-1)
             next_q_values = self.target_dqn(s_prime)
-            target_q_values = r_0 - r_2 + r_1 + (1 - done) * torch.max(next_q_values, dim=1).values
+            target_q_values = r_0 - r_2 + r_1 + ~done * torch.max(next_q_values, dim=1).values
             commutative_loss = F.mse_loss(selected_q_values, target_q_values)
 
         if commutative_loss == 0:
@@ -248,20 +248,20 @@ class CommutativeDQN(BasicDQN):
             done = False
             num_action = 0
             episode_reward = 0
-            
-            _state_proxy = []
+
             prev_action = None
             prev_reward = None
             _prev_state_proxy = []
-            state, regions = self._generate_state()
+            state, regions, actions = self._generate_state()
+            _state_proxy = sorted(list(actions))
             while not done:
                 num_action += 1
                 action = self._select_action(state)
                 line = self.candidate_lines[action]
                 reward, done, next_regions, next_state = self._step(problem_instance, regions, line, num_action)
                 
-                state_proxy = _state_proxy + (self.max_action - len(_state_proxy)) * [0]
-                prev_state_proxy = _prev_state_proxy + (self.max_action - len(_prev_state_proxy)) * [0]
+                state_proxy = _state_proxy + (2*self.max_action - len(_state_proxy)) * [0]
+                prev_state_proxy = _prev_state_proxy + (2*self.max_action - len(_prev_state_proxy)) * [0]
                 self.buffer.add((state, action, reward, next_state, done, prev_state_proxy, prev_action, prev_reward))
                 # (s, a) -> (s', r)
                 self.ptr_lst[(tuple(state_proxy), action)] = (next_state, reward)

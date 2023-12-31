@@ -27,7 +27,7 @@ class BasicDQN(CDL):
     def _init_hyperparams(self):
         num_records = 10
         
-        self.tau = 0.005
+        self.tau = 0.0005
         self.alpha = 0.0002
         self.batch_size = 128
         self.sma_window = 100
@@ -116,8 +116,13 @@ class BasicDQN(CDL):
         losses = []
         rewards = []
         
+        best_regions = None
+        best_language = None
+        best_reward = -np.inf
+        
         for _ in range(self.num_episodes):
             done = False
+            language = []
             num_action = 0
             episode_reward = 0
             state, regions, _ = self._generate_state()
@@ -128,6 +133,7 @@ class BasicDQN(CDL):
                 reward, done, next_regions, next_state = self._step(problem_instance, regions, line, num_action)
                 self.buffer.add(state, action, reward, next_state, done)
 
+                language += [line]
                 state = next_state
                 regions = next_regions
                 episode_reward += reward
@@ -142,28 +148,13 @@ class BasicDQN(CDL):
             avg_rewards = np.mean(rewards[-self.sma_window:])
             wandb.log({"Average Loss": avg_losses})
             wandb.log({"Average Reward": avg_rewards})
-    
-    def _get_final_lines(self, problem_instance):
-        done = False
-        language = []
-        num_action = 0
-        self.epsilon = 0
-        regions = [SQUARE]
-        episode_reward = 0
-        state = self.autoencoder.get_state(regions)
-        while not done:
-            num_action += 1
-            action = self._select_action(state)
-            line = self.candidate_lines[action]
-            reward, done, next_regions, next_state = self._step(problem_instance, regions, line, num_action)
             
-            state = next_state
-            regions = next_regions
-            language += [line]
-            episode_reward += reward
-        
-        language = np.array(language).reshape(-1,3)
-        return language, regions, episode_reward
+            if episode_reward > best_reward:
+                best_regions = regions
+                best_reward = episode_reward
+                best_language = np.array(language).reshape(-1, 3)
+                
+        return best_language, best_regions, best_reward
 
     # Retrieve optimal set lines for a given problem instance from the training phase
     def _generate_language(self, problem_instance, buffer=None):
@@ -174,8 +165,7 @@ class BasicDQN(CDL):
             self.buffer = ReplayBuffer(self.state_dims, 1, self.memory_size)
         
         self._init_wandb(problem_instance)
-        self._train(problem_instance)
-        language, regions, reward = self._get_final_lines(problem_instance)
+        language, regions, reward = self._train(problem_instance)
         
         self._log_regions(problem_instance, 'Episode', 'Final', regions, reward)
         wandb.log({"Language": language})
@@ -244,6 +234,10 @@ class CommutativeDQN(BasicDQN):
         losses = []
         rewards = []
         
+        best_regions = None
+        best_language = None
+        best_reward = -np.inf
+        
         for _ in range(self.num_episodes):
             done = False
             num_action = 0
@@ -273,6 +267,7 @@ class CommutativeDQN(BasicDQN):
                 _state_proxy += [action]
                 _state_proxy = sorted(_state_proxy)
 
+                language += [line]
                 state = next_state
                 regions = next_regions
                 episode_reward += reward
@@ -286,6 +281,13 @@ class CommutativeDQN(BasicDQN):
             avg_rewards = np.mean(rewards[-self.sma_window:])
             wandb.log({"Average Loss": avg_losses})
             wandb.log({"Average Reward": avg_rewards})
+            
+            if episode_reward > best_reward:
+                best_regions = regions
+                best_reward = episode_reward
+                best_language = np.array(language).reshape(-1, 3)
+                
+        return best_language, best_regions, best_reward
             
     def _generate_language(self, problem_instance):
         self.ptr_lst = {}

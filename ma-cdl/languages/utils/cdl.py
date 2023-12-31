@@ -29,8 +29,8 @@ class CDL:
         self.buffer = None
         self.max_action = 8
         self.state_dims = 128
-        self.action_cost = 0.10
-        self.efficiency_factor = 0
+        self.action_cost = 0.1
+        self.efficiency_factor = 0.05
         
         self.valid_lines = set()
         self.name = self.__class__.__name__
@@ -171,9 +171,10 @@ class CDL:
         num_actions = self.rng.choice(self.max_action)
         
         if hasattr(self, 'candidate_lines'):
-            actions = self.rng.choice(self.candidate_lines[1:], size=num_actions, replace=True)
+            adaptations = self.rng.choice(len(self.candidate_lines), size=num_actions, replace=True)
+            actions = np.array(self.candidate_lines)[adaptations]
         else: 
-            actions = self.rng.uniform(size=(num_actions, 3))
+            actions = adaptations = self.rng.uniform(size=(num_actions, 3))
             
         linestrings = CDL.get_shapely_linestring(actions)
         valid_lines = CDL.get_valid_lines(linestrings)
@@ -181,7 +182,7 @@ class CDL:
         regions = CDL.create_regions(list(self.valid_lines))
         state = self.autoencoder.get_state(regions)
         
-        return state, regions
+        return state, regions, adaptations
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):
@@ -272,11 +273,13 @@ class CDL:
             done = np.array_equal(action, self.candidate_lines[0])
         else:
             done = self._is_terminating_action(action)
-        
+            
+        util_s = self._calc_utility(problem_instance, regions)
         if not done:
-            util_s = self._calc_utility(problem_instance, regions)
             util_s_prime = self._calc_utility(problem_instance, next_regions)
             reward = util_s_prime - util_s - (self.action_cost * num_action)
+        elif done and num_action == 1:
+            reward = util_s
             
         return reward, (done or timeout)
             

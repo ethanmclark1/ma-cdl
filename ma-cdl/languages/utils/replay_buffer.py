@@ -3,12 +3,14 @@ import numpy as np
 
 class ReplayBuffer:
     def __init__(self, state_size, action_size, buffer_size):
+        action_dtype = torch.int64 if action_size == 1 else torch.float
+        
         self.state = torch.zeros(buffer_size, state_size, dtype=torch.float)
-        self.action = torch.zeros(buffer_size, action_size, dtype=torch.int64)
+        self.action = torch.zeros(buffer_size, action_size, dtype=action_dtype)
         self.reward = torch.zeros(buffer_size, dtype=torch.float)
         self.next_state = torch.zeros(buffer_size, state_size, dtype=torch.float)
-        self.done = torch.zeros(buffer_size, dtype=torch.int64)
-        self.is_initialized = torch.zeros(buffer_size, dtype=torch.int64)
+        self.done = torch.zeros(buffer_size, dtype=torch.bool)
+        self.is_initialized = torch.zeros(buffer_size, dtype=torch.bool)
 
         # Manging buffer size and current position
         self.count = 0
@@ -39,11 +41,14 @@ class ReplayBuffer:
 class CommutativeReplayBuffer(ReplayBuffer):
     def __init__(self, state_size, action_size, buffer_size, max_action):
         super().__init__(state_size, action_size, buffer_size)
+
+        action_dtype = self.action.dtype
+        prev_state_proxy_dims = 2*max_action if action_dtype == torch.int64 else 2*max_action*action_size
         
-        self.prev_state_proxy = torch.zeros(buffer_size, max_action, dtype=torch.int64)
-        self.prev_action = torch.zeros(buffer_size, action_size, dtype=torch.int64)
+        self.prev_state_proxy = torch.zeros(buffer_size, prev_state_proxy_dims, dtype=action_dtype)
+        self.prev_action = torch.zeros(buffer_size, action_size, dtype=action_dtype)
         self.prev_reward = torch.zeros(buffer_size, dtype=torch.float)
-        self.has_previous = torch.zeros(buffer_size, dtype=torch.int64)
+        self.has_previous = torch.zeros(buffer_size, dtype=torch.bool)
 
     def add(self, transition):
         state, action, reward, next_state, done, prev_state_proxy, prev_action, prev_reward = transition

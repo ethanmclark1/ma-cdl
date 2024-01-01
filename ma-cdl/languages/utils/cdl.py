@@ -29,13 +29,13 @@ class CDL:
         self.buffer = None
         self.max_action = 8
         self.state_dims = 128
-        self.action_cost = 0.1
-        self.efficiency_factor = 0.05
+        self.action_cost = 0.125
+        self.efficiency_factor = 0
         
         self.valid_lines = set()
         self.name = self.__class__.__name__
         
-        self.configs_to_consider = 25
+        self.configs_to_consider = 40
         self.rng = np.random.default_rng(seed=42)
         self.obstacle_radius = world.large_obstacles[0].radius
     
@@ -244,7 +244,7 @@ class CDL:
         except (nx.NodeNotFound, nx.NetworkXNoPath):
             avg_safe_area = 0
             
-        return avg_safe_area
+        return 2*avg_safe_area
     
     """ 
     Calculate utility of a given problem (i.e. all configurations) 

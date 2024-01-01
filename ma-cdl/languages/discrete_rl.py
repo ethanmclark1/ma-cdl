@@ -226,7 +226,7 @@ class CommutativeDQN(BasicDQN):
         else:
             total_loss = torch.cat([traditional_loss.unsqueeze(-1), commutative_loss.unsqueeze(-1)])
             total_loss = torch.mean(total_loss)
-            
+        
         total_loss = self._update(total_loss)            
         return total_loss
 
@@ -243,6 +243,7 @@ class CommutativeDQN(BasicDQN):
             num_action = 0
             episode_reward = 0
 
+            language = []
             prev_action = None
             prev_reward = None
             _prev_state_proxy = []

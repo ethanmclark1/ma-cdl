@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.optim import Adam
+from torch.optim.lr_scheduler import StepLR
 
 
 class Autoencoder(nn.Module):
@@ -55,7 +56,7 @@ class Autoencoder(nn.Module):
 
 
 class DQN(nn.Module):
-    def __init__(self, state_dims, action_dim, lr):
+    def __init__(self, state_dims, action_dim, lr, step_size, gamma):
         super(DQN, self).__init__()
         self.l1 = nn.Linear(state_dims, 256)
         self.l2 = nn.Linear(256, 256)
@@ -63,6 +64,7 @@ class DQN(nn.Module):
         self.l4 = nn.Linear(128, action_dim)
         
         self.optim = Adam(self.parameters(), lr=lr)
+        self.lr_scheduler = StepLR(self.optim, step_size=step_size, gamma=gamma)
         
     def forward(self, state):
         x = F.relu(self.l1(state))

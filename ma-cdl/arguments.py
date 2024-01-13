@@ -27,6 +27,13 @@ def get_arguments():
         )
     
     parser.add_argument(
+        '--random_state', 
+        type=bool, 
+        default=False,
+        help='Does agent begin with a randomly initialized state {default_val: False}'
+        )
+    
+    parser.add_argument(
         '--render_mode', 
         type=str, 
         default='None', 
@@ -36,4 +43,4 @@ def get_arguments():
     
     args = parser.parse_args()
         
-    return args.num_agents, args.num_large_obstacles, args.num_small_obstacles, args.render_mode
+    return args.num_agents, args.num_large_obstacles, args.num_small_obstacles, args.random_state, args.render_mode

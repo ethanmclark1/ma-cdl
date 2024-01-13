@@ -3,8 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
 
+
+torch.manual_seed(42)
 
 class Autoencoder(nn.Module):
     def __init__(self, output_dims):
@@ -55,16 +56,35 @@ class Autoencoder(nn.Module):
         return encoded.flatten().numpy()
 
 
+class RewardEstimator(nn.Module):
+    def __init__(self, input_dims, output_dims, lr):
+        super(RewardEstimator, self).__init__()
+        self.l1 = nn.Linear(input_dims, 16)
+        self.l2 = nn.Linear(16, 8)
+        self.l3 = nn.Linear(8, output_dims)
+        
+        self.optim = Adam(self.parameters(), lr=lr)
+        
+    def forward(self, s, a):
+        x = torch.cat([prev_reward.unsqueeze(-1), reward.unsqueeze(-1)], dim=-1)
+        x = F.relu(self.l1(x))
+        x = F.relu(self.l2(x))
+        r_2 = self.l3(x)
+        r_3 = prev_reward + reward - r_2
+        return r_2, r_3
+    
+
 class DQN(nn.Module):
-    def __init__(self, state_dims, action_dim, lr, step_size, gamma):
+    def __init__(self, state_dims, action_dim, traditional_lr, commutative_lr=None):
         super(DQN, self).__init__()
         self.l1 = nn.Linear(state_dims, 256)
         self.l2 = nn.Linear(256, 256)
         self.l3 = nn.Linear(256, 128)
         self.l4 = nn.Linear(128, action_dim)
         
-        self.optim = Adam(self.parameters(), lr=lr)
-        self.lr_scheduler = StepLR(self.optim, step_size=step_size, gamma=gamma)
+        self.traditional_optim = Adam(self.parameters(), lr=traditional_lr)
+        if commutative_lr is not None:
+            self.commutative_optim = Adam(self.parameters(), lr=commutative_lr)
         
     def forward(self, state):
         x = F.relu(self.l1(state))

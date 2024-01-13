@@ -1,8 +1,7 @@
 import torch
-import numpy as np
 
 class ReplayBuffer:
-    def __init__(self, state_size, action_size, buffer_size):
+    def __init__(self, state_size, action_size, buffer_size, rng):
         action_dtype = torch.int64 if action_size == 1 else torch.float
         
         self.state = torch.zeros(buffer_size, state_size, dtype=torch.float)
@@ -12,6 +11,7 @@ class ReplayBuffer:
         self.done = torch.zeros(buffer_size, dtype=torch.bool)
         self.is_initialized = torch.zeros(buffer_size, dtype=torch.bool)
 
+        self.rng = rng
         # Manging buffer size and current position
         self.count = 0
         self.real_size = 0
@@ -34,13 +34,13 @@ class ReplayBuffer:
 
     def sample(self, batch_size):
         initialized_idxs = torch.where(self.is_initialized == 1)[0]
-        idxs = np.random.choice(initialized_idxs, size=batch_size, replace=False)
+        idxs = self.rng.choice(initialized_idxs, size=batch_size, replace=False)
         return idxs
     
 
 class CommutativeReplayBuffer(ReplayBuffer):
-    def __init__(self, state_size, action_size, buffer_size, max_action):
-        super().__init__(state_size, action_size, buffer_size)
+    def __init__(self, state_size, action_size, buffer_size, max_action, rng):
+        super().__init__(state_size, action_size, buffer_size, rng)
 
         action_dtype = self.action.dtype
         prev_state_proxy_dims = 2*max_action if action_dtype == torch.int64 else 2*max_action*action_size
@@ -50,9 +50,7 @@ class CommutativeReplayBuffer(ReplayBuffer):
         self.prev_reward = torch.zeros(buffer_size, dtype=torch.float)
         self.has_previous = torch.zeros(buffer_size, dtype=torch.bool)
 
-    def add(self, transition):
-        state, action, reward, next_state, done, prev_state_proxy, prev_action, prev_reward = transition
-        
+    def add(self, state, action, reward, next_state, done, prev_state_proxy, prev_action, prev_reward):        
         super().add(state, action, reward, next_state, done, increase_size=False)
                 
         if prev_action is not None:

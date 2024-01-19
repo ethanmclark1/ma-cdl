@@ -22,19 +22,21 @@ BOUNDARIES = [LineString([CORNERS[0], CORNERS[2]]),
 SQUARE = Polygon([CORNERS[2], CORNERS[0], CORNERS[1], CORNERS[3]])
 
 class CDL:
-    def __init__(self, scenario, world):
+    def __init__(self, scenario, world, random_state):
         self.world = world
         self.scenario = scenario
+        self.random_state = random_state
         
         self.buffer = None
         self.max_action = 8
         self.state_dims = 128
-        self.action_cost = 0.20
+        self.action_cost = 0.10
+        self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
         self.valid_lines = set()
         self.name = self.__class__.__name__
         
-        self.configs_to_consider = 30
+        self.configs_to_consider = 25
         self.rng = np.random.default_rng(seed=42)
         self.obstacle_radius = world.large_obstacles[0].radius
     
@@ -102,6 +104,26 @@ class CDL:
         pil_image = Image.open(buffer)
         plt.close()
         wandb.log({"image": wandb.Image(pil_image)})
+        
+    def _generate_fixed_state(self):
+        regions = [SQUARE]
+        adaptations = []
+        
+        return regions, adaptations
+        
+    def _generate_random_state(self):
+        num_actions = self.rng.choice(self.max_action)
+        
+        if hasattr(self, 'candidate_lines'):
+            adaptations = self.rng.choice(len(self.candidate_lines), size=num_actions, replace=True)
+            actions = np.array(self.candidate_lines)[adaptations]
+            
+        linestrings = CDL.get_shapely_linestring(actions)
+        valid_lines = CDL.get_valid_lines(linestrings)
+        self.valid_lines.update(valid_lines)
+        regions = CDL.create_regions(list(self.valid_lines))
+        
+        return regions, adaptations
             
     # Generate shapely linestring (startpoint & endpoint) from standard form of line (Ax + By + C = 0)
     @staticmethod
@@ -165,23 +187,6 @@ class CDL:
         except:
             region_idx = None
         return region_idx
-    
-    def _generate_state(self):
-        num_actions = self.rng.choice(self.max_action)
-        
-        if hasattr(self, 'candidate_lines'):
-            adaptations = self.rng.choice(len(self.candidate_lines), size=num_actions, replace=True)
-            actions = np.array(self.candidate_lines)[adaptations]
-        else: 
-            actions = adaptations = self.rng.uniform(size=(num_actions, 3))
-            
-        linestrings = CDL.get_shapely_linestring(actions)
-        valid_lines = CDL.get_valid_lines(linestrings)
-        self.valid_lines.update(valid_lines)
-        regions = CDL.create_regions(list(self.valid_lines))
-        state = self.autoencoder.get_state(regions)
-        
-        return state, regions, adaptations
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):
@@ -243,7 +248,7 @@ class CDL:
         except (nx.NodeNotFound, nx.NetworkXNoPath):
             avg_safe_area = -4
             
-        return 2*avg_safe_area
+        return avg_safe_area
     
     """ 
     Calculate utility of a given problem (i.e. all configurations) 
@@ -274,8 +279,11 @@ class CDL:
             
         util_s = self._calc_utility(problem_instance, regions)
         if not done:
-            util_s_prime = self._calc_utility(problem_instance, next_regions)
-            reward = util_s_prime - util_s - (self.action_cost * num_action)
+            if len(regions) != len(next_regions):
+                util_s_prime = self._calc_utility(problem_instance, next_regions)
+                reward = util_s_prime - util_s
+            # If len(regions) == len(next_regions) then u(s') - u(s) = 0
+            reward -= self.action_cost * num_action
         elif done and num_action == 1:
             reward = util_s
             

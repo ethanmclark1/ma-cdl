@@ -6,6 +6,30 @@ def get_arguments():
         )
     
     parser.add_argument(
+        '--approach', 
+        type=str, 
+        default='commutative_dqn', 
+        choices=['basic_dqn', 'commutative_dqn', 'basic_td3', 'commutative_td3'],
+        help='Choose which approach to use {default_val: basic_dqn, choices: [%(choices)s]}'
+        )
+    
+    parser.add_argument(
+        '--problem_instance', 
+        type=str, 
+        default='bisect', 
+        choices=['bisect', 'circle', 'cross', 'corners', 'staggered', 'quarters', 'scatter', 'stellaris'],
+        help='Which problem to attempt {default_val: cross, choices: [%(choices)s]}'
+        )
+    
+    parser.add_argument(
+        '--reward_prediction_type',
+        type=str,
+        default='approximate',
+        choices=['lookup', 'approximate'],
+        help='Which reward prediction type to use {default_val: basic, choices: [%(choices)s]}'
+        )
+    
+    parser.add_argument(
         '--num_agents', 
         type=int, 
         default=1,
@@ -28,9 +52,10 @@ def get_arguments():
     
     parser.add_argument(
         '--random_state', 
-        type=bool, 
-        default=False,
-        help='Does agent begin with a randomly initialized state {default_val: False}'
+        type=int, 
+        default=0, 
+        choices=[0, 1], 
+        help='Generate a random initial state for the agent {default_val: None, choices: [%(choices)s]}'
         )
     
     parser.add_argument(
@@ -43,4 +68,4 @@ def get_arguments():
     
     args = parser.parse_args()
         
-    return args.num_agents, args.num_large_obstacles, args.num_small_obstacles, args.random_state, args.render_mode
+    return args.approach, args.problem_instance, args.reward_prediction_type, args.num_agents, args.num_large_obstacles, args.num_small_obstacles, bool(args.random_state), args.render_mode

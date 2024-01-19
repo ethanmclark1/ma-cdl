@@ -12,7 +12,7 @@ class ReplayBuffer:
         self.is_initialized = torch.zeros(buffer_size, dtype=torch.bool)
 
         self.rng = rng
-        # Manging buffer size and current position
+        # Managing buffer size and current position
         self.count = 0
         self.real_size = 0
         self.size = buffer_size
@@ -43,18 +43,18 @@ class CommutativeReplayBuffer(ReplayBuffer):
         super().__init__(state_size, action_size, buffer_size, rng)
 
         action_dtype = self.action.dtype
-        prev_state_proxy_dims = 2*max_action if action_dtype == torch.int64 else 2*max_action*action_size
+        prev_state = max_action if action_dtype == torch.int64 else max_action*action_size
         
-        self.prev_state_proxy = torch.zeros(buffer_size, prev_state_proxy_dims, dtype=action_dtype)
+        self.prev_state = torch.zeros(buffer_size, prev_state, dtype=torch.float)
         self.prev_action = torch.zeros(buffer_size, action_size, dtype=action_dtype)
         self.prev_reward = torch.zeros(buffer_size, dtype=torch.float)
         self.has_previous = torch.zeros(buffer_size, dtype=torch.bool)
 
-    def add(self, state, action, reward, next_state, done, prev_state_proxy, prev_action, prev_reward):        
+    def add(self, state, action, reward, next_state, done, prev_state, prev_action, prev_reward):        
         super().add(state, action, reward, next_state, done, increase_size=False)
                 
         if prev_action is not None:
-            self.prev_state_proxy[self.count] = torch.as_tensor(prev_state_proxy)
+            self.prev_state[self.count] = torch.as_tensor(prev_state)
             self.prev_action[self.count] = torch.as_tensor(prev_action)
             self.prev_reward[self.count] = torch.as_tensor(prev_reward)
             self.has_previous[self.count] = True

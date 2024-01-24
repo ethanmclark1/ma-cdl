@@ -121,6 +121,10 @@ class BasicDQN(CDL):
         next_state = self.buffer.next_state[indices]
         done = self.buffer.done[indices]
         
+        if self.reward_prediction_type == 'approximate':
+            steps = torch.cat([state, action, next_state], dim=-1)
+            reward = self.target_reward_estimator(steps).detach().flatten()
+        
         q_values = self.dqn(state)
         selected_q_values = torch.gather(q_values, 1, action).squeeze(-1)
         next_q_values = self.target_dqn(next_state)
@@ -230,6 +234,9 @@ class CommutativeDQN(BasicDQN):
         combined_loss.backward()
         self.reward_estimator.optim.step()
         
+        for target_param, local_param in zip(self.target_reward_estimator.parameters(), self.reward_estimator.parameters()):
+            target_param.data.copy_(self.estimator_tau * local_param.data + (1.0 - self.estimator_tau) * target_param.data)
+        
         return traces[3], step_loss.item(), trace_loss_r2.item()
     
     """
@@ -298,7 +305,7 @@ class CommutativeDQN(BasicDQN):
             traces = [[s, a, s_1], [s_1, b, s_prime], [s, b, s_2], [s_2, a, s_prime]]
             
             r3_step, step_loss, trace_loss = self._update_estimator(traces, r_0, r_1)
-            r3_pred = self.reward_estimator(r3_step).flatten().detach()
+            r3_pred = self.target_reward_estimator(r3_step).flatten().detach()
             
             stored_losses['step_loss'] += step_loss
             stored_losses['trace_loss'] += trace_loss
@@ -397,6 +404,7 @@ class CommutativeDQN(BasicDQN):
         self.ptr_lst = {}
         
         self.reward_estimator = RewardEstimator(self.max_action*2 + 1, self.estimator_lr)
+        self.target_reward_estimator = copy.deepcopy(self.reward_estimator)
 
         self.dqn = DQN(self.max_action, self.action_dims, self.traditional_lr, self.commutative_lr)
         self.buffer = CommutativeReplayBuffer(self.max_action, 1, self.memory_size, self.max_action, self.rng)

@@ -31,8 +31,6 @@ class BasicDQN(CDL):
         self.tau = 0.0005
         self.batch_size = 128
         self.sma_window = 1000
-        self.weighting_0 = 0.70
-        self.weighting_1 = 0.30
         self.granularity = 0.20
         self.min_epsilon = 0.10
         self.epsilon_start = 1.0
@@ -41,8 +39,8 @@ class BasicDQN(CDL):
         self.estimator_tau = 0.01
         self.estimator_lr = 0.001
         self.traditional_lr = 0.0003
-        self.commutative_lr = 0.00006
-        self.epsilon_decay = 0.0004 if self.random_state else 0.000175
+        self.commutative_lr = 0.0003
+        self.epsilon_decay = 0.0005 if self.random_state else 0.000175
         
         self.record_freq = self.num_episodes // num_records
             
@@ -52,8 +50,6 @@ class BasicDQN(CDL):
         config.sma_window = self.sma_window
         config.max_action = self.max_action
         config.batch_size = self.batch_size
-        config.weighting_0 = self.weighting_0
-        config.weighting_1 = self.weighting_1
         config.granularity = self.granularity 
         config.min_epsilon = self.min_epsilon
         config.action_cost = self.action_cost
@@ -103,25 +99,21 @@ class BasicDQN(CDL):
     def _update(self, loss, traditional_update=True, update_target=True):
         if not isinstance(loss, int):    
             if traditional_update:
-                self.dqn.traditional_optim.zero_grad(set_to_none=True)
+                self.dqn.traditional_optim.zero_grad()
                 loss.backward()
                 self.dqn.traditional_optim.step()
-                loss = loss.item()
             else:
-                self.dqn.commutative_optim.zero_grad(set_to_none=True)
+                self.dqn.commutative_optim.zero_grad()
                 loss.backward()
                 self.dqn.commutative_optim.step()
-                loss = loss.item()
 
         if update_target:
             for target_param, local_param in zip(self.target_dqn.parameters(), self.dqn.parameters()):
                 target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)
-
-        return loss
             
-    def _learn(self):
+    def _learn(self, stored_losses):
         if self.buffer.real_size < self.batch_size:
-            return 0, None
+            return 0, None, stored_losses
 
         indices = self.buffer.sample(self.batch_size)
         
@@ -135,12 +127,13 @@ class BasicDQN(CDL):
         selected_q_values = torch.gather(q_values, 1, action).squeeze(-1)
         next_q_values = self.target_dqn(next_state)
         target_q_values = reward + ~done * torch.max(next_q_values, dim=1).values
-        loss = F.mse_loss(selected_q_values, target_q_values)       
+        loss = F.mse_loss(selected_q_values, target_q_values)  
+        stored_losses['traditional_loss'] += loss.item()   
         
-        return loss, indices
+        return loss, indices, stored_losses
     
     def _train(self, problem_instance):
-        rewards = []
+        rewards = []        
         traditional_losses = []
         
         best_regions = None
@@ -154,6 +147,7 @@ class BasicDQN(CDL):
             regions, actions = self._generate_init_state()
             num_action = len(actions)
             _state = sorted(list(actions))
+            stored_losses = {'traditional_loss': 0}
             while not done:
                 num_action += 1
                 
@@ -171,16 +165,21 @@ class BasicDQN(CDL):
                 language += [line]
                 episode_reward += reward
                 
-            traditional_loss, _ = self._learn()
-            traditional_loss = self._update(traditional_loss)
             self._decrement_epsilon()
+            
+            loss, _, stored_losses = self._learn(stored_losses)
+            self._update(loss)
 
             rewards.append(episode_reward)
-            traditional_losses.append(traditional_loss)
+            traditional_losses.append(stored_losses['traditional_loss'])
+            
             avg_rewards = np.mean(rewards[-self.sma_window:])
             avg_traditional_losses = np.mean(traditional_losses[-self.sma_window:])
             
-            wandb.log({"Average Reward": avg_rewards, "Average Traditional Loss": avg_traditional_losses})
+            wandb.log({
+                'Average Reward': avg_rewards,
+                'Average Traditional Loss': avg_traditional_losses,
+                })
             
             if episode_reward > best_rewards:
                 best_rewards = episode_reward
@@ -193,9 +192,11 @@ class BasicDQN(CDL):
     # Retrieve optimal set lines for a given problem instance from the training phase
     def _generate_language(self, problem_instance, dqn=None, buffer=None):
         self.epsilon = self.epsilon_start
+        
         if dqn is None and buffer is None:
             self.dqn = DQN(self.max_action, self.action_dims, self.traditional_lr)
             self.buffer = ReplayBuffer(self.max_action, 1, self.memory_size, self.rng)
+            
         self.target_dqn = copy.deepcopy(self.dqn)
         
         self._init_wandb(problem_instance)
@@ -212,24 +213,26 @@ class CommutativeDQN(BasicDQN):
     def __init__(self, scenario, world, random_state, reward_prediction_type=None):
         super(CommutativeDQN, self).__init__(scenario, world, random_state, reward_prediction_type)
 
-    def _update_estimator(self, trace_0, r_2, r_3):
-        # Invididual trace updates
-        step_0, r_0 = trace_0[0][0], trace_0[0][1].unsqueeze(-1)
-        step_1, r_1 = trace_0[1][0], trace_0[0][1].unsqueeze(-1)
+    def _update_estimator(self, traces, r_0, r_1):
+        traces = torch.stack([torch.cat(rows, dim=1) for rows in traces])
         
-        r0_pred = self.reward_estimator(step_0)
-        r1_pred = self.reward_estimator(step_1)
-        
-        step_loss = F.mse_loss(r_0, r0_pred) + F.mse_loss(r_1, r1_pred)
-        
-        trace_loss = F.mse_loss(r_0 + r_1, r_2 + r_3)
-        
-        self.reward_estimator.zero_grad()
-        total_loss = self.weighting_0 * step_loss + self.weighting_1 * trace_loss
-        total_loss.backward()
+        r0r1_pred = self.reward_estimator(traces[:2].view(-1, 2 * self.max_action + 1))
+        self.reward_estimator.optim.zero_grad()
+        stacked_r0r1 = torch.cat([r_0, r_1], dim=-1).view(-1, 1)
+        step_loss = F.mse_loss(stacked_r0r1, r0r1_pred)
+        step_loss.backward(retain_graph=True)
         self.reward_estimator.optim.step()
         
-        return step_loss.item(), trace_loss.item()
+        r2r3_pred = self.reward_estimator(traces[2:])
+        self.reward_estimator.optim.zero_grad()
+        summed_r0r1 = (r_0 + r_1).view(-1, 1)
+        trace_loss_r2 = F.mse_loss(summed_r0r1, r2r3_pred[0] + r2r3_pred[1].detach())
+        trace_loss_r3 = F.mse_loss(summed_r0r1, r2r3_pred[0].detach() + r2r3_pred[1])
+        combined_loss = trace_loss_r2 + trace_loss_r3
+        combined_loss.backward()
+        self.reward_estimator.optim.step()
+        
+        return traces[3], step_loss.item(), trace_loss_r2.item()
     
     """
     Update Rule 0: Traditional Q-Update
@@ -237,18 +240,16 @@ class CommutativeDQN(BasicDQN):
     Update Rule 1: Commutative Q-Update
     Q(s_2, a) = Q(s_2, a) + alpha * (r_0 - r_2 + r_1 + max_a Q(s', a) - Q(s_2, a))
     """
-    def _learn(self):
-        step_loss, trace_loss = 0, 0
-        traditional_loss, indices = super()._learn()
-        commutative_loss = 0
+    def _learn(self, stored_losses):
+        traditional_loss, indices, stored_losses = super()._learn(stored_losses)
         
         if indices is None:
-            return step_loss, trace_loss, traditional_loss, commutative_loss
+            return stored_losses
         
-        traditional_loss = self._update(traditional_loss)
+        self._update(traditional_loss)
                 
         # Commutative Q-Update
-        r_3 = None
+        r3_pred = None
         has_previous = self.buffer.has_previous[indices]        
         valid_indices = torch.nonzero(has_previous, as_tuple=True)[0]
         
@@ -278,11 +279,11 @@ class CommutativeDQN(BasicDQN):
                 s_2 = np.stack([self.ptr_lst[key][1] for i, key in enumerate(key_tuples) if valid_mask[i]])
                 s_2 = torch.from_numpy(s_2).type(torch.float)
                 
-                r_3 = r_0 + r_1 - r_2
+                r3_pred = r_0 + r_1 - r_2
         else:
             a = self.buffer.prev_action[indices][valid_indices]
             r_0 = self.buffer.prev_reward[indices][valid_indices]
-            
+                        
             s_1 = self.buffer.state[indices][valid_indices]
             r_1 = self.buffer.reward[indices][valid_indices]
             s_prime = self.buffer.next_state[indices][valid_indices]
@@ -296,31 +297,25 @@ class CommutativeDQN(BasicDQN):
             tmp_tensor[tmp_tensor == self.action_dims + 1] = 0
             s_2 = tmp_tensor[:, :-1]
             
-            trace0_step0 = torch.cat([s, b, s_1], dim=-1)
-            trace0_step1 = torch.cat([s_1, a, s_prime], dim=-1)
-            trace1_step0 = torch.cat([s, b, s_2], dim=-1)
-            trace1_step1 = torch.cat([s_2, a, s_prime], dim=-1)
+            traces = [[s, a, s_1], [s_1, b, s_prime], [s, b, s_2], [s_2, a, s_prime]]
             
-            r_2 = self.reward_estimator(trace1_step0)
-            r_3 = self.reward_estimator(trace1_step1)
+            r3_step, step_loss, trace_loss = self._update_estimator(traces, r_0, r_1)
+            r3_pred = self.reward_estimator(r3_step).flatten().detach()
             
-            trace_0 = [(trace0_step0, r_0), (trace0_step1, r_1)]
-            
-            losses = self._update_estimator(trace_0, r_2, r_3)
-            step_loss += losses[0]
-            trace_loss += losses[1]
-            
-            r_3 = r_3.squeeze(-1).detach()        
-            
-        if r_3 is not None:
+            stored_losses['step_loss'] += step_loss
+            stored_losses['trace_loss'] += trace_loss
+                        
+        if r3_pred is not None:
             q_values = self.dqn(s_2)
             selected_q_values = torch.gather(q_values, 1, a).squeeze(-1)
             next_q_values = self.target_dqn(s_prime)
-            target_q_values = r_3 + ~done * torch.max(next_q_values, dim=1).values
+            target_q_values = r3_pred + ~done * torch.max(next_q_values, dim=1).values
             commutative_loss = F.mse_loss(selected_q_values, target_q_values)
-            commutative_loss = self._update(commutative_loss, traditional_update=False)
+            self._update(commutative_loss, traditional_update=False)
+            
+            stored_losses['commutative_loss'] += commutative_loss.item()
         
-        return step_loss, trace_loss, traditional_loss, commutative_loss
+        return stored_losses
 
     def _train(self, problem_instance):
         rewards = []
@@ -341,9 +336,10 @@ class CommutativeDQN(BasicDQN):
             prev_action = None
             prev_reward = None
             _prev_state = []
-            regions, actions = self._generate_init_state()
-            num_action = len(actions)
-            _state = sorted(list(actions))
+            regions, adaptations = self._generate_init_state()
+            num_action = len(adaptations)
+            _state = sorted(list(adaptations))
+            stored_losses = {'traditional_loss': 0, 'commutative_loss': 0, 'step_loss': 0, 'trace_loss': 0}
             while not done:
                 num_action += 1
                 prev_state = _prev_state + (self.max_action - len(_prev_state)) * [0]
@@ -367,14 +363,15 @@ class CommutativeDQN(BasicDQN):
                 regions = next_regions
                 episode_reward += reward
             
-            step_loss, trace_loss, traditional_loss, commutative_loss = self._learn()
             self._decrement_epsilon()
             
+            stored_losses = self._learn(stored_losses)
+            
             rewards.append(episode_reward)
-            step_losses.append(step_loss)
-            trace_losses.append(trace_loss)
-            traditional_losses.append(traditional_loss)
-            commutative_losses.append(commutative_loss)
+            step_losses.append(stored_losses['step_loss'] / (num_action - len(adaptations)))
+            trace_losses.append(stored_losses['trace_loss'] / (num_action - len(adaptations)))
+            traditional_losses.append(stored_losses['traditional_loss'])
+            commutative_losses.append(stored_losses['commutative_loss'])
             
             avg_rewards = np.mean(rewards[-self.sma_window:])
             avg_step_losses = np.mean(step_losses[-self.sma_window:])
@@ -402,7 +399,6 @@ class CommutativeDQN(BasicDQN):
         self.ptr_lst = {}
         
         self.reward_estimator = RewardEstimator(self.max_action*2 + 1, 1, self.estimator_lr)
-        self.target_reward_estimator = copy.deepcopy(self.reward_estimator)
 
         self.dqn = DQN(self.max_action, self.action_dims, self.traditional_lr, self.commutative_lr)
         self.buffer = CommutativeReplayBuffer(self.max_action, 1, self.memory_size, self.max_action, self.rng)

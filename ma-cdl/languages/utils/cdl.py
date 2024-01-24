@@ -118,7 +118,7 @@ class CDL:
             adaptations = self.rng.choice(len(self.candidate_lines), size=num_actions, replace=True)
             actions = np.array(self.candidate_lines)[adaptations]
         else:
-            actions = adaptations = self._truncate(self.rng.uniform(size=(num_actions, 3)))         
+            actions = adaptations = self.rng.uniform(size=(num_actions, 3))        
                
         linestrings = CDL.get_shapely_linestring(actions)
         valid_lines = CDL.get_valid_lines(linestrings)
@@ -189,14 +189,6 @@ class CDL:
         except:
             region_idx = None
         return region_idx
-    
-    def _truncate(self, actions, digits=3):
-        format_string = f".{digits}f"
-        truncated_action = np.empty(actions.shape, dtype=np.float32)
-        for i in range(actions.shape[0]):
-            for j, num in enumerate(actions[i]):
-                truncated_action[i, j] = float(format(num, format_string))
-        return truncated_action
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):

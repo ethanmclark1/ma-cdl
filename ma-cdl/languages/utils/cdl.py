@@ -30,7 +30,7 @@ class CDL:
         self.buffer = None
         self.max_action = 8
         self.state_dims = 128
-        self.action_cost = 0.10
+        self.action_cost = 0.125
         self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
         self.valid_lines = set()
@@ -117,7 +117,9 @@ class CDL:
         if hasattr(self, 'candidate_lines'):
             adaptations = self.rng.choice(len(self.candidate_lines), size=num_actions, replace=True)
             actions = np.array(self.candidate_lines)[adaptations]
-            
+        else:
+            actions = adaptations = self._truncate(self.rng.uniform(size=(num_actions, 3)))         
+               
         linestrings = CDL.get_shapely_linestring(actions)
         valid_lines = CDL.get_valid_lines(linestrings)
         self.valid_lines.update(valid_lines)
@@ -187,6 +189,14 @@ class CDL:
         except:
             region_idx = None
         return region_idx
+    
+    def _truncate(self, actions, digits=3):
+        format_string = f".{digits}f"
+        truncated_action = np.empty(actions.shape, dtype=np.float32)
+        for i in range(actions.shape[0]):
+            for j, num in enumerate(actions[i]):
+                truncated_action[i, j] = float(format(num, format_string))
+        return truncated_action
                 
     # Generate configuration under specified constraint
     def _generate_configuration(self, problem_instance):
@@ -265,7 +275,7 @@ class CDL:
                 safe_area.append(config_cost)
 
         utility = mean(safe_area)
-        return utility
+        return 3*utility
     
     # r(s,a,s') = u(s') - u(s) - c(a)
     def _get_reward(self, problem_instance, regions, action, next_regions, num_action):        
@@ -301,8 +311,7 @@ class CDL:
         if done:
             self.valid_lines.clear()
             
-        next_state = self.autoencoder.get_state(next_regions)
-        return reward, done, next_regions, next_state
+        return reward, done, next_regions
     
     def get_language(self, problem_instance):
         approach = self.__class__.__name__

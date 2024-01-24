@@ -27,14 +27,14 @@ class BasicTD3(CDL):
         
         self.tau = 0.001
         self.policy_freq = 2
-        self.noise_clip = 0.25
+        self.noise_clip = 0.3
         self.batch_size = 128
-        self.sma_window = 100
+        self.sma_window = 500
         self.lr_actor = 0.0004
         self.lr_critic = 0.0004
         self.policy_noise = 0.1
-        self.memory_size = 25000
-        self.num_episodes = 5000
+        self.memory_size = 100000
+        self.num_episodes = 15000
         self.estimator_tau = 0.01
         self.estimator_lr = 0.008
         self.min_exploration = 0.05

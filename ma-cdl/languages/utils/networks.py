@@ -57,11 +57,11 @@ class Autoencoder(nn.Module):
 
 
 class RewardEstimator(nn.Module):
-    def __init__(self, input_dims, output_dims, lr):
+    def __init__(self, input_dims, lr):
         super(RewardEstimator, self).__init__()
         self.l1 = nn.Linear(input_dims, 64)
         self.l2 = nn.Linear(64, 16)
-        self.l3 = nn.Linear(16, output_dims)
+        self.l3 = nn.Linear(16, 1)
         
         self.optim = Adam(self.parameters(), lr=lr)
         

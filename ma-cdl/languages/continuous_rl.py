@@ -10,7 +10,7 @@ from languages.utils.replay_buffer import ReplayBuffer, CommutativeReplayBuffer
 
 
 class BasicTD3(CDL):
-    def __init__(self, scenario, world, random_state, reward_prediction_type=None):
+    def __init__(self, scenario, world, random_state):
         super(BasicTD3, self).__init__(scenario, world, random_state)
         self._init_hyperparams()
         
@@ -19,7 +19,6 @@ class BasicTD3(CDL):
         self.actor_target = None
         self.critic_target = None
         self.buffer = None
-        self.reward_prediction_type = reward_prediction_type
         
         self.action_dims = 3
         
@@ -29,7 +28,7 @@ class BasicTD3(CDL):
         self.tau = 0.001
         self.policy_freq = 2
         self.noise_clip = 0.25
-        self.batch_size = 16
+        self.batch_size = 128
         self.sma_window = 100
         self.lr_actor = 0.0004
         self.lr_critic = 0.0004
@@ -37,9 +36,10 @@ class BasicTD3(CDL):
         self.memory_size = 25000
         self.num_episodes = 5000
         self.estimator_tau = 0.01
-        self.estimator_lr = 0.001
-        self.exploration_noise = 0.05
-        self.exploration_decay = 0.999
+        self.estimator_lr = 0.008
+        self.min_exploration = 0.05
+        self.exploration_noise = 0.2
+        self.exploration_decay = 0.00005
         self.record_freq = self.num_episodes // num_records
         
     def _init_wandb(self, problem_instance):
@@ -58,10 +58,18 @@ class BasicTD3(CDL):
         config.num_episodes = self.num_episodes
         config.estimator_lr = self.estimator_lr
         config.estimator_tau = self.estimator_tau
+        config.min_exploration = self.min_exploration
         config.exploration_noise = self.exploration_noise
         config.exploration_decay = self.exploration_decay
         config.configs_to_consider = self.configs_to_consider
-        config.reward_prediction_type = self.reward_prediction_type
+        
+    def _decrement_exploration_noise(self):
+        self.exploration_noise -= self.exploration_decay
+        self.exploration_noise = max(self.exploration_noise, 0.05)
+        
+    def _is_terminating_action(self, action):
+        threshold = 0.025
+        return (abs(action) <= threshold).all()
           
     def _select_action(self, state, is_noisy=True):
         with torch.no_grad():
@@ -71,24 +79,18 @@ class BasicTD3(CDL):
                 noise = self.rng.normal(0, self.exploration_noise, size=self.action_dims).astype(np.float32)
                 action = (action.detach().numpy() + noise).clip(-1, 1)
         
-        truncated_action = self._truncate(action.reshape(-1, 3))
-        return truncated_action.flatten()
+        return action
     
-    def _is_terminating_action(self, action):
-        threshold = 0.02
-        return (abs(action) < threshold).all()
-    
-    def _update(self, actor_loss, critic_loss, traditional_update=True, update_target=True):
+    def _update(self, actor_loss, critic_loss):
         if not isinstance(actor_loss, int):
             self.actor.optim.zero_grad(set_to_none=True)
             actor_loss.backward()
             self.actor.optim.step()
             
-            if update_target:
-                for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-                    target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
-                for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
-                    target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+            for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
+                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+            for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
+                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
                 
         if not isinstance(critic_loss, int):
             self.critic.optim.zero_grad(set_to_none=True)
@@ -104,18 +106,20 @@ class BasicTD3(CDL):
         
         state = self.buffer.state[indices]
         action = self.buffer.action[indices]
-        reward = self.buffer.reward[indices]
+        reward = self.buffer.reward[indices].view(-1, 1)
         next_state = self.buffer.next_state[indices]
-        done = self.buffer.done[indices]
-                
-        reward = reward.view(-1, 1)
-        done = done.view(-1, 1)
+        done = self.buffer.done[indices].view(-1, 1)
+
+        # All rewards need to come from estimator for commutative TD3
+        if 'Commutative' in self.__class__.__name__:
+            steps = torch.cat([state, action, next_state], dim=-1)
+            reward = self.target_reward_estimator(steps).detach()           
         
         with torch.no_grad():
             noise = torch.normal(mean=0, std=self.policy_noise, size=action.size()).clamp(-self.noise_clip, self.noise_clip)
-            next_actions = (self.actor_target(next_state) + noise).clamp(-1, 1)
+            next_action = (self.actor_target(next_state) + noise).clamp(-1, 1)
             
-            target_Q1, target_Q2 = self.critic_target(next_state, next_actions)
+            target_Q1, target_Q2 = self.critic_target(next_state, next_action)
             target_Q = torch.min(target_Q1, target_Q2)
             target_Q = reward + ~done * target_Q
         
@@ -162,6 +166,8 @@ class BasicTD3(CDL):
                 regions = next_regions
                 language += [action]
                 episode_reward += reward
+            
+            self._decrement_exploration_noise()
             
             actor_loss, critic_loss, _, stored_losses = self._learn(episode, stored_losses)           
             self._update(actor_loss, critic_loss)
@@ -211,9 +217,10 @@ class BasicTD3(CDL):
     
 
 class CommutativeTD3(BasicTD3):
-    def __init__(self, scenario, world, random_state, reward_prediction_type):
-        super(CommutativeTD3, self).__init__(scenario, world, random_state, reward_prediction_type)
-        
+    def __init__(self, scenario, world, random_state):
+        super(CommutativeTD3, self).__init__(scenario, world, random_state)
+    
+    # Update the reward estimator
     def _update_estimator(self, traces, r_0, r_1):
         traces = torch.stack([torch.cat(rows, dim=1) for rows in traces])
         
@@ -233,6 +240,9 @@ class CommutativeTD3(BasicTD3):
         combined_loss.backward()
         self.reward_estimator.optim.step()
         
+        for target_param, local_param in zip(self.target_reward_estimator.parameters(), self.reward_estimator.parameters()):
+            target_param.data.copy_(self.estimator_tau * local_param.data + (1.0 - self.estimator_tau) * target_param.data)
+        
         return traces[3], step_loss.item(), trace_loss_r2.item()
         
     def _learn(self, episode, stored_losses):
@@ -243,88 +253,68 @@ class CommutativeTD3(BasicTD3):
         
         self._update(traditional_actor_loss, traditional_critic_loss)
         
-        # Commutative TD3 Update
         r3_pred = None
         has_previous = self.buffer.has_previous[indices]
         valid_indices = torch.nonzero(has_previous, as_tuple=True)[0]
         
         s = self.buffer.prev_state[indices][valid_indices]
+        a = self.buffer.prev_action[indices][valid_indices]
+        r_0 = self.buffer.prev_reward[indices][valid_indices]
+        
+        s_1 = self.buffer.state[indices][valid_indices]
         b = self.buffer.action[indices][valid_indices]
+        r_1 = self.buffer.reward[indices][valid_indices]
+        s_prime = self.buffer.next_state[indices][valid_indices]
+        done = self.buffer.done[indices][valid_indices]
         
-        if self.reward_prediction_type == 'lookup':
-            key_tuples = [(tuple(_s.tolist()), _b.item()) for _s, _b in zip(s, b)]
-            # Check whether key exists in ptr_lst
-            valid_mask = torch.tensor([self.ptr_lst.get(key, (None, None))[0] is not None for key in key_tuples])
+        tmp_s = s.clone()
+        # Replace all 0s with 1s to ensure empty actions are at the end
+        tmp_s[tmp_s == 0] = 1.
+        # Split into tuples to sort
+        tmp_s = tmp_s.reshape(tmp_s.shape[0], -1, 3)
+        tmp_b = b.reshape(b.shape[0], -1, 3)
+        tmp_s2 = torch.cat([tmp_s, tmp_b], dim=1)
+        # Take sum of rows because torch cannot sort 3D tensors
+        row_sums = torch.sum(tmp_s2, dim=-1, keepdim=True)
+        sorted_indices = torch.sort(row_sums, dim=1).indices
+        # Get sorted indices into 3D tensor
+        sorted_indices = sorted_indices.expand(-1, tmp_s2.shape[1], tmp_s2.shape[2])
+        tmp_s2 = torch.gather(tmp_s2, 1, sorted_indices)
+        # Substitute 1s back to 0s
+        tmp_s2[tmp_s2 == 1.] = 0
+        s_2 = tmp_s2[:, :-1].reshape(tmp_s2.shape[0], -1)
         
-            if torch.any(valid_mask):
-                # Previous samples
-                s = s[valid_mask]
-                a = self.buffer.prev_action[indices][valid_indices][valid_mask]
-                r_0 = self.buffer.prev_reward[indices][valid_indices][valid_mask]
-                
-                # Current samples
-                b = b[valid_mask]
-                r_1 = self.buffer.reward[indices][valid_indices][valid_mask]
-                s_prime = self.buffer.next_state[indices][valid_indices][valid_mask]
-                done = self.buffer.done[indices][valid_indices][valid_mask]
-                
-                r_2 = np.array([self.ptr_lst[key][0] for i, key in enumerate(key_tuples) if valid_mask[i]])
-                r_2 = torch.from_numpy(r_2).type(torch.float)
-                s_2 = np.stack([self.ptr_lst[key][1] for i, key in enumerate(key_tuples) if valid_mask[i]])
-                s_2 = torch.from_numpy(s_2).type(torch.float)
-                
-                r3_pred = r_0 + r_2 - r_1
-        else:
-            a = self.buffer.prev_action[indices][valid_indices]
-            r_0 = self.buffer.prev_reward[indices][valid_indices]
-            
-            s_1 = self.buffer.state[indices][valid_indices]
-            r_1 = self.buffer.reward[indices][valid_indices]
-            s_prime = self.buffer.next_state[indices][valid_indices]
-            done = self.buffer.done[indices][valid_indices]
-            
-            tmp_s = s.clone()
-            # Replace all 0s with 1s to ensure empty actions are at the end
-            tmp_s[tmp_s == 0] = 1.
-            # Split into tuples to sort
-            tmp_s = tmp_s.reshape(tmp_s.shape[0], -1, 3)
-            tmp_b = b.reshape(b.shape[0], -1, 3)
-            tmp_s2 = torch.cat([tmp_s, tmp_b], dim=1)
-            # Take sum of rows because torch cannot sort 3D tensors
-            row_sums = torch.sum(tmp_s2, dim=-1, keepdim=True)
-            sorted_indices = torch.sort(row_sums, dim=1).indices
-            # Get sorted indices into 3D tensor
-            sorted_indices = sorted_indices.expand(-1, tmp_s2.shape[1], tmp_s2.shape[2])
-            tmp_s2 = torch.gather(tmp_s2, 1, sorted_indices)
-            # Substitute 1s back to 0s
-            tmp_s2[tmp_s2 == 1.] = 0
-            s_2 = tmp_s2[:, :-1].reshape(tmp_s2.shape[0], -1)
-            
-            traces = [[s, a, s_1], [s_1, b, s_prime], [s, b, s_2], [s_2, a, s_prime]]
-            
-            r3_step, step_loss, trace_loss = self._update_estimator(traces, r_0, r_1)
-            r3_pred = self.reward_estimator(r3_step).flatten().detach()
-            
-            stored_losses['step_loss'] += step_loss
-            stored_losses['trace_loss'] += trace_loss
+        traces = [[s, a, s_1], [s_1, b, s_prime], [s, b, s_2], [s_2, a, s_prime]]
         
-        # TODO: Validate the update
+        r3_step, step_loss, trace_loss = self._update_estimator(traces, r_0, r_1)
+        r3_pred = self.target_reward_estimator(r3_step).detach()
+        
+        stored_losses['step_loss'] += step_loss
+        stored_losses['trace_loss'] += trace_loss
+        
         if r3_pred is not None:
+            commutative_actor_loss = 0
+            
+            r3_pred = r3_pred.view(-1, 1)
+            done = done.view(-1, 1)
+            
             with torch.no_grad():
                 noise = torch.normal(mean=0, std=self.policy_noise, size=a.size()).clamp(-self.noise_clip, self.noise_clip)
-                next_actions = (self.actor_target(s_prime) + noise).clamp(-1, 1)
+                next_action = (self.actor_target(s_prime) + noise).clamp(-1, 1)
                 
-                target_Q1, target_Q2 = self.critic_target(s_prime, next_actions)
+                target_Q1, target_Q2 = self.critic_target(s_prime, next_action)
                 target_Q = torch.min(target_Q1, target_Q2)
                 target_Q = r3_pred + ~done * target_Q
             
             current_Q1, current_Q2 = self.critic(s_2, a)
-            critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
-            stored_losses['commutative_critic_loss'] += critic_loss.item()
+            commutative_critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+            stored_losses['commutative_critic_loss'] += commutative_critic_loss.item()
             
             if episode % self.policy_freq == 0:
-                actor_loss = -self.critic.get_Q1(s_2, self.actor(s_2)).mean()
-                stored_losses['commutative_actor_loss'] += actor_loss.item()
+                commutative_actor_loss = -self.critic.get_Q1(s_2, self.actor(s_2)).mean()
+                stored_losses['commutative_actor_loss'] += commutative_actor_loss.item()
+                
+            self._update(commutative_actor_loss, commutative_critic_loss)
         
         return stored_losses
     
@@ -373,7 +363,6 @@ class CommutativeTD3(BasicTD3):
                                 
                 prev_state = np.concatenate(_prev_state + (self.max_action - len(_prev_state)) * [empty_action])
                 self.buffer.add(state, action, reward, next_state, done, prev_state, prev_action, prev_reward)
-                self.ptr_lst[(tuple(state), tuple(action))] = (reward, next_state)
                 
                 _prev_state = _state.copy()
                 prev_action = action.copy()
@@ -385,6 +374,8 @@ class CommutativeTD3(BasicTD3):
                 language += [action]
                 episode_reward += reward
                 
+            self._decrement_exploration_noise()
+            
             stored_losses = self._learn(episode, stored_losses)           
 
             rewards.append(episode_reward)
@@ -413,11 +404,11 @@ class CommutativeTD3(BasicTD3):
                 "Average Commutative Critic Loss": avg_commutative_critic_losses,
                 })
     
-    def _generate_language(self, problem_instance):
-        self.ptr_lst = {}        
-        
+    def _generate_language(self, problem_instance):        
         step_dims = 2 * self.max_action * self.action_dims + self.action_dims
+        # Reward estimator is predicting based on (s,a,s')
         self.reward_estimator = RewardEstimator(step_dims, self.estimator_lr)
+        self.target_reward_estimator = copy.deepcopy(self.reward_estimator)
 
         state_dims = self.max_action * self.action_dims
         self.actor = Actor(state_dims, self.action_dims, self.lr_actor)

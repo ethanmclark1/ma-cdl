@@ -8,13 +8,14 @@ from arguments import get_arguments
 from agents.speaker import Speaker
 from agents.listener import Listener
 
-from languages.rl import RL
 from languages.baselines.grid_world import GridWorld
 from languages.baselines.voronoi_map import VoronoiMap
 from languages.baselines.direct_path import DirectPath
+from languages.discrete_rl import BasicDQN, CommutativeDQN
+from languages.continuous_rl import BasicTD3, CommutativeTD3
 
 class MA_CDL():
-    def __init__(self, num_agents, num_large_obstacles, num_small_obstacles, render_mode, max_cycles=50):
+    def __init__(self, reward_prediction_type, num_agents, num_large_obstacles, num_small_obstacles, random_state, render_mode, max_cycles=50):
         
         self.env = Signal8.env(
             num_agents=num_agents, 
@@ -29,29 +30,31 @@ class MA_CDL():
         agent_radius = world.agents[0].radius
         obstacle_radius = world.small_obstacles[0].radius 
         
-        # Context-Dependent Language
-        self.rl = RL(scenario, world)
-                                
+        # Discrete RL
+        self.basic_dqn = BasicDQN(scenario, world, random_state)
+        self.commutative_dqn = CommutativeDQN(scenario, world, random_state, reward_prediction_type)
+        
+        # Continuous RL
+        self.basic_td3 = BasicTD3(scenario, world, random_state)
+        self.commutative_td3 = CommutativeTD3(scenario, world, random_state)
+                                        
         # Baselines
         self.grid_world = GridWorld()
-        self.voronoi_map = VoronoiMap(scenario, world)
-        self.direct_path = DirectPath(scenario, world)
+        self.voronoi_map = VoronoiMap(scenario, world, random_state)
+        self.direct_path = DirectPath(scenario, world, random_state)
                 
         self.aerial_agent = Speaker(num_agents, obstacle_radius)
         self.ground_agent = Listener(agent_radius, obstacle_radius)
     
-    def retrieve_languages(self, problem_instance):
-        approaches = ['rl', 'voronoi_map', 'grid_world', 'direct_path']
-        language_set = {approach: None for approach in approaches} 
-        
-        for idx, name in enumerate(approaches):
-            approach = getattr(self, approaches[idx])
-            if hasattr(approach, 'get_language'):
-                language_set[name] = getattr(self, approaches[idx]).get_language(problem_instance)
-             
-        return language_set
+    def retrieve_language(self, approach, problem):            
+        approach = getattr(self, approach)
+        language = approach.get_language(problem)
+            
+        return language
 
     def act(self, problem_instance, language_set, num_episodes):
+        approaches = language_set.keys()
+        
         rl = language_set['rl']
         voronoi_map = language_set['voronoi_map']
         direct_path = language_set['direct_path']
@@ -124,20 +127,26 @@ class MA_CDL():
         
 
 if __name__ == '__main__':
-    num_agents, num_large_obstacles, num_small_obstacles, render_mode = get_arguments()
-    ma_cdl = MA_CDL(num_agents, num_large_obstacles, num_small_obstacles, render_mode)
+    arguments = get_arguments()
+    
+    approach = arguments[0]
+    problem_instance = arguments[1]
+    reward_prediction_type = arguments[2]
+    num_agents = arguments[3]
+    num_large_obstacles = arguments[4]
+    num_small_obstacles = arguments[5]
+    random_state = arguments[6]
+    render_mode = arguments[7]
+    
+    ma_cdl = MA_CDL(reward_prediction_type, num_agents, num_large_obstacles, num_small_obstacles, random_state, render_mode)
 
-    all_metrics = []
-    num_episodes = 10000
-    problem_instances = ma_cdl.env.unwrapped.world.problem_list
-    for problem_instance in problem_instances:
-        language_set = ma_cdl.retrieve_languages(problem_instance)
-        language_safety, ground_agent_success, avg_direction_len = ma_cdl.act(problem_instance, language_set, num_episodes)
+    language_set = ma_cdl.retrieve_language(approach, problem_instance)
+    #     language_safety, ground_agent_success, avg_direction_len = ma_cdl.act(problem_instance, language_set, num_episodes)
 
-        all_metrics.append({
-            'language_safety': language_safety,
-            'ground_agent_success': ground_agent_success,
-            'avg_direction_len': avg_direction_len,
-        })
+    #     all_metrics.append({
+    #         'language_safety': language_safety,
+    #         'ground_agent_success': ground_agent_success,
+    #         'avg_direction_len': avg_direction_len,
+    #     })
  
-    plot_metrics(problem_instances, all_metrics, num_episodes)
+    # plot_metrics(problem_instances, all_metrics, num_episodes)

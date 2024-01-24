@@ -53,7 +53,7 @@ def get_arguments():
     parser.add_argument(
         '--random_state', 
         type=int, 
-        default=0, 
+        default=1, 
         choices=[0, 1], 
         help='Generate a random initial state for the agent {default_val: None, choices: [%(choices)s]}'
         )

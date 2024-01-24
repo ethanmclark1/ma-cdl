@@ -59,28 +59,26 @@ class Autoencoder(nn.Module):
 class RewardEstimator(nn.Module):
     def __init__(self, input_dims, output_dims, lr):
         super(RewardEstimator, self).__init__()
-        self.l1 = nn.Linear(input_dims, 16)
-        self.l2 = nn.Linear(16, 8)
-        self.l3 = nn.Linear(8, output_dims)
+        self.l1 = nn.Linear(input_dims, 64)
+        self.l2 = nn.Linear(64, 16)
+        self.l3 = nn.Linear(16, output_dims)
         
         self.optim = Adam(self.parameters(), lr=lr)
         
-    def forward(self, s, a):
-        x = torch.cat([prev_reward.unsqueeze(-1), reward.unsqueeze(-1)], dim=-1)
+    def forward(self, x):
+        x = x.float()
         x = F.relu(self.l1(x))
         x = F.relu(self.l2(x))
-        r_2 = self.l3(x)
-        r_3 = prev_reward + reward - r_2
-        return r_2, r_3
+        return self.l3(x)
     
 
 class DQN(nn.Module):
     def __init__(self, state_dims, action_dim, traditional_lr, commutative_lr=None):
         super(DQN, self).__init__()
-        self.l1 = nn.Linear(state_dims, 256)
-        self.l2 = nn.Linear(256, 256)
-        self.l3 = nn.Linear(256, 128)
-        self.l4 = nn.Linear(128, action_dim)
+        self.l1 = nn.Linear(state_dims, 64)
+        self.l2 = nn.Linear(64, 128)
+        self.l3 = nn.Linear(128, 64)
+        self.l4 = nn.Linear(64, action_dim)
         
         self.traditional_optim = Adam(self.parameters(), lr=traditional_lr)
         if commutative_lr is not None:

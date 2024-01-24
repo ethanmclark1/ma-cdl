@@ -4,7 +4,6 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
-from languages.utils.ae import AE
 from languages.utils.cdl import CDL
 from languages.utils.networks import RewardEstimator, DQN
 from languages.utils.replay_buffer import ReplayBuffer, CommutativeReplayBuffer
@@ -23,7 +22,6 @@ class BasicDQN(CDL):
         self._create_candidate_set_of_lines()
         
         self.action_dims = len(self.candidate_lines)
-        self.autoencoder = AE(self.state_dims, self.max_action, self.rng, self.candidate_lines)
 
     def _init_hyperparams(self):
         num_records = 10
@@ -154,7 +152,7 @@ class BasicDQN(CDL):
                 state = _state + (self.max_action - len(_state)) * [0]
                 action = self._select_action(state)
                 line = self.candidate_lines[action]
-                reward, done, next_regions, _ = self._step(problem_instance, regions, line, num_action)
+                reward, done, next_regions = self._step(problem_instance, regions, line, num_action)
                 
                 _state = sorted(_state + [action])
                 next_state = _state + (self.max_action - len(_state)) * [0]
@@ -216,9 +214,9 @@ class CommutativeDQN(BasicDQN):
     def _update_estimator(self, traces, r_0, r_1):
         traces = torch.stack([torch.cat(rows, dim=1) for rows in traces])
         
-        r0r1_pred = self.reward_estimator(traces[:2].view(-1, 2 * self.max_action + 1))
+        r0r1_pred = self.reward_estimator(traces[:2])
         self.reward_estimator.optim.zero_grad()
-        stacked_r0r1 = torch.cat([r_0, r_1], dim=-1).view(-1, 1)
+        stacked_r0r1 = torch.cat([r_0, r_1], dim=-1).view(2, -1, 1)
         step_loss = F.mse_loss(stacked_r0r1, r0r1_pred)
         step_loss.backward(retain_graph=True)
         self.reward_estimator.optim.step()
@@ -347,7 +345,7 @@ class CommutativeDQN(BasicDQN):
                 
                 action = self._select_action(state)
                 line = self.candidate_lines[action]
-                reward, done, next_regions, _ = self._step(problem_instance, regions, line, num_action)
+                reward, done, next_regions = self._step(problem_instance, regions, line, num_action)
                 
                 _prev_state = _state
                 _state = sorted(_state + [action])
@@ -398,7 +396,7 @@ class CommutativeDQN(BasicDQN):
     def _generate_language(self, problem_instance):
         self.ptr_lst = {}
         
-        self.reward_estimator = RewardEstimator(self.max_action*2 + 1, 1, self.estimator_lr)
+        self.reward_estimator = RewardEstimator(self.max_action*2 + 1, self.estimator_lr)
 
         self.dqn = DQN(self.max_action, self.action_dims, self.traditional_lr, self.commutative_lr)
         self.buffer = CommutativeReplayBuffer(self.max_action, 1, self.memory_size, self.max_action, self.rng)

@@ -30,7 +30,7 @@ class CDL:
         self.buffer = None
         self.max_action = 8
         self.state_dims = 128
-        self.action_cost = 0.125
+        self.action_cost = 0.20
         self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
         self.valid_lines = set()

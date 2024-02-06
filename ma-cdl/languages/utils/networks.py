@@ -57,56 +57,59 @@ class Autoencoder(nn.Module):
 
 
 class RewardEstimator(nn.Module):
-    def __init__(self, input_dims, lr):
+    def __init__(self, input_dims, lr, step_size, gamma):
         super(RewardEstimator, self).__init__()
-        self.l1 = nn.Linear(input_dims, 64)
-        self.l2 = nn.Linear(64, 16)
-        self.l3 = nn.Linear(16, 1)
+        self.fc1 = nn.Linear(input_dims, 128)
+        self.ln1 = nn.LayerNorm(128)
+        
+        self.fc2 = nn.Linear(128, 64)
+        self.ln2 = nn.LayerNorm(64)
+        
+        self.fc3 = nn.Linear(64, 1)
         
         self.optim = Adam(self.parameters(), lr=lr)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=step_size, gamma=gamma)
         
     def forward(self, x):
         x = x.float()
-        x = F.relu(self.l1(x))
-        x = F.relu(self.l2(x))
-        return self.l3(x)
+        x = F.relu(self.ln1(self.fc1(x)))
+        x = F.relu(self.ln2(self.fc2(x)))
+        return self.fc3(x)
     
 
 class DQN(nn.Module):
-    def __init__(self, state_dims, action_dim, traditional_lr, commutative_lr=None):
+    def __init__(self, state_dims, action_dim, lr):
         super(DQN, self).__init__()
-        self.l1 = nn.Linear(state_dims, 64)
-        self.l2 = nn.Linear(64, 128)
-        self.l3 = nn.Linear(128, 64)
-        self.l4 = nn.Linear(64, action_dim)
+        self.fc1 = nn.Linear(state_dims, 64)
+        self.fc2 = nn.Linear(64, 128)
+        self.fc3 = nn.Linear(128, 64)
+        self.fc4 = nn.Linear(64, action_dim)
         
-        self.traditional_optim = Adam(self.parameters(), lr=traditional_lr)
-        if commutative_lr is not None:
-            self.commutative_optim = Adam(self.parameters(), lr=commutative_lr)
+        self.optim = Adam(self.parameters(), lr=lr)
         
     def forward(self, state):
-        x = F.relu(self.l1(state))
-        x = F.relu(self.l2(x))
-        x = F.relu(self.l3(x))
-        x = self.l4(x)
+        x = F.relu(self.fc1(state))
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        x = self.fc4(x)
         return x
     
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, lr):
         super(Actor, self).__init__()
-        self.l1 = nn.Linear(state_dim, 256)
-        self.l2 = nn.Linear(256, 256)
-        self.l3 = nn.Linear(256, 128)
-        self.l4 = nn.Linear(128, action_dim)
+        self.fc1 = nn.Linear(state_dim, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, 128)
+        self.fc4 = nn.Linear(128, action_dim)
         
         self.optim = Adam(self.parameters(), lr=lr)
 
     def forward(self, state):
-        a = F.relu(self.l1(state))
-        a = F.relu(self.l2(a))
-        a = F.relu(self.l3(a))
-        a = torch.tanh(self.l4(a))
+        a = F.relu(self.fc1(state))
+        a = F.relu(self.fc2(a))
+        a = F.relu(self.fc3(a))
+        a = torch.tanh(self.fc4(a))
         return a
 
 
@@ -115,16 +118,16 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
 
         # Q1 architecture
-        self.l1 = nn.Linear(state_dim + action_dim, 256)
-        self.l2 = nn.Linear(256, 256)
-        self.l3 = nn.Linear(256, 64)
-        self.l4 = nn.Linear(64, 1)
+        self.fc1 = nn.Linear(state_dim + action_dim, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, 64)
+        self.fc4 = nn.Linear(64, 1)
 
         # Q2 architecture
-        self.l5 = nn.Linear(state_dim + action_dim, 256)
-        self.l6 = nn.Linear(256, 256)
-        self.l7 = nn.Linear(256, 64)
-        self.l8 = nn.Linear(64, 1)
+        self.fc5 = nn.Linear(state_dim + action_dim, 256)
+        self.fc6 = nn.Linear(256, 256)
+        self.fc7 = nn.Linear(256, 64)
+        self.fc8 = nn.Linear(64, 1)
         
         self.optim = Adam(self.parameters(), lr=lr)
 
@@ -132,23 +135,23 @@ class Critic(nn.Module):
         xu = torch.cat([state, action], 1)
 
         # Q1 architecture
-        x1 = F.relu(self.l1(xu))
-        x1 = F.relu(self.l2(x1))
-        x1 = F.relu(self.l3(x1))
-        x1 = self.l4(x1)
+        x1 = F.relu(self.fc1(xu))
+        x1 = F.relu(self.fc2(x1))
+        x1 = F.relu(self.fc3(x1))
+        x1 = self.fc4(x1)
 
         # Q2 architecture
-        x2 = F.relu(self.l5(xu))
-        x2 = F.relu(self.l6(x2))
-        x2 = F.relu(self.l7(x2))
-        x2 = self.l8(x2)
+        x2 = F.relu(self.fc5(xu))
+        x2 = F.relu(self.fc6(x2))
+        x2 = F.relu(self.fc7(x2))
+        x2 = self.fc8(x2)
         return x1, x2
 
     # More efficient to only compute Q1
     def get_Q1(self, state, action):
         xu = torch.cat([state, action], 1)
-        x1 = F.relu(self.l1(xu))
-        x1 = F.relu(self.l2(x1))
-        x1 = F.relu(self.l3(x1))
-        x1 = self.l4(x1)
+        x1 = F.relu(self.fc1(xu))
+        x1 = F.relu(self.fc2(x1))
+        x1 = F.relu(self.fc3(x1))
+        x1 = self.fc4(x1)
         return x1

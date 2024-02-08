@@ -81,8 +81,11 @@ class RewardBuffer:
         self.real_size = min(self.size, self.real_size + 1)
 
     def add(self, state, action, reward, next_state):     
+        if isinstance(action, int):
+            action = [action]
+            
         state = torch.as_tensor(state)
-        action = torch.as_tensor([action])
+        action = torch.as_tensor(action)
         next_state = torch.as_tensor(next_state)   
         
         self.transition[self.count] = torch.cat((state, action, next_state), dim=0)
@@ -104,10 +107,14 @@ class CommutativeRewardBuffer(RewardBuffer):
         self.reward = torch.zeros(buffer_size, 2, dtype=torch.float)
         
     def add(self, prev_state, action, prev_reward, commutative_state, prev_action, reward, next_state):
+        if isinstance(action, int):
+            action = [action]
+            prev_action = [prev_action]
+        
         prev_state = torch.as_tensor(prev_state)
-        prev_action = torch.as_tensor([prev_action])
+        prev_action = torch.as_tensor(prev_action)
         commutative_state = torch.as_tensor(commutative_state)
-        action = torch.as_tensor([action])
+        action = torch.as_tensor(action)
         next_state = torch.as_tensor(next_state)  
         
         step_0 = torch.cat((prev_state, action, commutative_state), dim=0)

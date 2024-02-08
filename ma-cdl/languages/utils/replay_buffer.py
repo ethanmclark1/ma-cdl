@@ -103,15 +103,15 @@ class CommutativeRewardBuffer(RewardBuffer):
         self.transition = torch.zeros((buffer_size,2,step_dims), dtype=torch.float)
         self.reward = torch.zeros(buffer_size, 2, dtype=torch.float)
         
-    def add(self, prev_state, action, prev_reward, state, prev_action, reward, next_state):
+    def add(self, prev_state, action, prev_reward, commutative_state, prev_action, reward, next_state):
         prev_state = torch.as_tensor(prev_state)
         prev_action = torch.as_tensor([prev_action])
-        state = torch.as_tensor(state)
+        commutative_state = torch.as_tensor(commutative_state)
         action = torch.as_tensor([action])
         next_state = torch.as_tensor(next_state)  
         
-        step_0 = torch.cat((prev_state, prev_action, state), dim=0)
-        step_1 = torch.cat((state, action, next_state), dim=0)
+        step_0 = torch.cat((prev_state, action, commutative_state), dim=0)
+        step_1 = torch.cat((commutative_state, prev_action, next_state), dim=0)
         self.transition[self.count] = torch.stack((step_0, step_1))
         self.reward[self.count] = torch.tensor((prev_reward, reward))
         self.is_initialized[self.count] = True

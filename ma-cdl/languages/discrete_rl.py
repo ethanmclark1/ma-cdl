@@ -10,14 +10,15 @@ from languages.utils.replay_buffer import ReplayBuffer, RewardBuffer, Commutativ
 
 
 class BasicDQN(CDL):
-    def __init__(self, scenario, world, random_state, reward_prediction_type=None):
+    def __init__(self, scenario, world, random_state, reward_prediction_type):
         super(BasicDQN, self).__init__(scenario, world, random_state)     
         self._init_hyperparams()                
         
         self.dqn = None
         self.target_dqn = None
-        self.buffer = None
+        self.replay_buffer = None
         self.reward_estimator = None
+        self.target_reward_estimator = None
         self.reward_prediction_type = reward_prediction_type
         
         self._create_candidate_set_of_lines()
@@ -27,20 +28,23 @@ class BasicDQN(CDL):
     def _init_hyperparams(self):
         num_records = 10
         
+        # Reward Estimator
+        self.gamma = 0.25
+        self.step_size = 2000
+        self.dropout_rate = 0.4
+        self.estimator_tau = 0.01
+        self.estimator_lr = 0.001
+        
+        # DQN
         self.lr = 0.0002
         self.tau = 0.0005
-        self.gamma = 0.95
-        self.step_size = 100
         self.batch_size = 128
         self.sma_window = 1000
         self.granularity = 0.20
         self.min_epsilon = 0.10
         self.epsilon_start = 1.0
-        self.estimator_lr = 0.005
         self.memory_size = 100000
         self.num_episodes = 15000
-        self.estimator_tau = 0.01
-        self.start_decrement = 1000
         self.epsilon_decay = 0.0005 if self.random_state else 0.000175
         
         self.record_freq = self.num_episodes // num_records
@@ -58,12 +62,12 @@ class BasicDQN(CDL):
         config.min_epsilon = self.min_epsilon
         config.action_cost = self.action_cost
         config.memory_size = self.memory_size
+        config.dropout_rate = self.dropout_rate
         config.random_state = self.random_state
         config.num_episodes = self.num_episodes
         config.estimator_lr = self.estimator_lr
         config.estimator_tau = self.estimator_tau
         config.epsilon_decay = self.epsilon_decay
-        config.start_decrement = self.start_decrement
         config.reward_estimator = self.reward_estimator
         config.configs_to_consider = self.configs_to_consider
         config.reward_prediction_type = self.reward_prediction_type
@@ -87,10 +91,9 @@ class BasicDQN(CDL):
             self.candidate_lines += [(0.1, 0.1, i)]
             self.candidate_lines += [(-0.1, 0.1, i)]
             
-    def _decrement_epsilon(self, episode):
-        if self.reward_prediction_type == 'lookup' or episode > self.start_decrement:
-            self.epsilon -= self.epsilon_decay
-            self.epsilon = max(self.epsilon, self.min_epsilon)
+    def _decrement_epsilon(self):
+        self.epsilon -= self.epsilon_decay
+        self.epsilon = max(self.epsilon, self.min_epsilon)
         
     def _select_action(self, state):
         if self.rng.random() < self.epsilon:
@@ -100,37 +103,25 @@ class BasicDQN(CDL):
                 action_index = self.dqn(torch.FloatTensor(state)).argmax().item()
                 
         return action_index
-    
-    def _soft_update_target(self, local_model, target_model, tau):
-        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-            target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
                 
     def _add_transition(self, state, action, reward, next_state, prev_state, prev_action, prev_reward):
         self.reward_buffer.add(state, action, reward, next_state)
         
         if prev_state is not None:   
-            # Concatenate states together
-            tmp_prev_state = torch.as_tensor(prev_state)
-            tmp_action = torch.as_tensor([action])
-            tmp_prev_state[tmp_prev_state == 0] = self.action_dims + 1
-            tmp_prev_state = torch.cat([tmp_prev_state, tmp_action], dim=-1)
-            tmp_prev_state = torch.sort(tmp_prev_state, dim=-1).values
-            tmp_prev_state[tmp_prev_state == self.action_dims + 1] = 0
-            commutative_state = tmp_prev_state[:-1]
-            
+            commutative_state = self._get_next_state(prev_state, action)
             self.commutative_reward_buffer.add(prev_state, action, prev_reward, commutative_state, prev_action, reward, next_state)
 
-    def _learn(self, losses, traditional_update=True):
-        if self.buffer.real_size < self.batch_size:
+    def _learn(self, losses):
+        if self.replay_buffer.real_size < self.batch_size:
             return losses
 
-        indices = self.buffer.sample(self.batch_size)
+        indices = self.replay_buffer.sample(self.batch_size)
         
-        state = self.buffer.state[indices]
-        action = self.buffer.action[indices]
-        reward = self.buffer.reward[indices]
-        next_state = self.buffer.next_state[indices]
-        done = self.buffer.done[indices]
+        state = self.replay_buffer.state[indices]
+        action = self.replay_buffer.action[indices]
+        reward = self.replay_buffer.reward[indices]
+        next_state = self.replay_buffer.next_state[indices]
+        done = self.replay_buffer.done[indices]
         
         if self.reward_prediction_type == 'approximate':
             with torch.no_grad():
@@ -141,18 +132,16 @@ class BasicDQN(CDL):
         selected_q_values = torch.gather(q_values, 1, action).squeeze(-1)
         next_q_values = self.target_dqn(next_state)
         target_q_values = reward + ~done * torch.max(next_q_values, dim=1).values
-        loss = F.mse_loss(selected_q_values, target_q_values)  
+        traditional_loss = F.mse_loss(selected_q_values, target_q_values)  
         
         self.dqn.optim.zero_grad()
-        loss.backward()
+        traditional_loss.backward()
         self.dqn.optim.step()
         
-        self._soft_update_target(self.dqn, self.target_dqn, self.tau)
-        
-        if traditional_update:
-            losses['traditional_loss'] += loss.item()
-        else:
-            losses['commutative_loss'] += loss.item()
+        for target_param, local_param in zip(self.target_dqn.parameters(), self.dqn.parameters()):
+            target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)
+                    
+        losses['traditional_loss'] += traditional_loss.item()
         
         return losses
     
@@ -190,8 +179,9 @@ class BasicDQN(CDL):
         self.reward_estimator.optim.step()
         self.reward_estimator.scheduler.step()
         
-        self._soft_update_target(self.reward_estimator, self.target_reward_estimator, self.estimator_tau)
-                    
+        for target_param, local_param in zip(self.target_reward_estimator.parameters(), self.reward_estimator.parameters()):
+            target_param.data.copy_(self.estimator_tau * local_param.data + (1.0 - self.estimator_tau) * target_param.data)
+                                
         # Attempt to log losses
         try:
             losses['step_loss'] += step_loss.item()
@@ -203,9 +193,9 @@ class BasicDQN(CDL):
     
     def _train(self, problem_instance):
         rewards = []        
-        traditional_losses = []
         step_losses = []
         trace_losses = []
+        traditional_losses = []
         
         best_regions = None
         best_language = None
@@ -216,47 +206,45 @@ class BasicDQN(CDL):
             language = []
             episode_reward = 0
             
+            prev_state = None
             prev_action = None
             prev_reward = None
-            _prev_state = []
-            regions, actions = self._generate_init_state()
-            num_action = len(actions)
-            _state = sorted(list(actions))
+            regions, adaptations = self._generate_init_state()
+            num_action = len(adaptations)
+            state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
             losses = {'traditional_loss': 0, 'step_loss': 0, 'trace_loss': 0}
             while not done:                
                 num_action += 1
-                state = _state + (self.max_action - len(_state)) * [0]
                 
                 action = self._select_action(state)
                 line = self.candidate_lines[action]
-                reward, done, next_regions = self._step(problem_instance, regions, line, num_action)
-                
-                _prev_state = _state
-                _state = sorted(_state + [action])
-                next_state = _state + (self.max_action - len(_state)) * [0]
-                
-                self.buffer.add(state, action, reward, next_state, done)
+                next_state, next_regions, reward, done = self._step(problem_instance, state, regions, action, line, num_action)
+                                
+                self.replay_buffer.add(state, action, reward, next_state, done)
                 
                 if self.reward_prediction_type == 'approximate':
                     self._add_transition(state, action, reward, next_state, prev_state, prev_action, prev_reward)
                 
-                prev_state = _prev_state + (self.max_action - len(_prev_state)) * [0]
+                prev_state = state
                 prev_action = action
                 prev_reward = reward
 
                 language += [line]
+                state = next_state
                 regions = next_regions
                 episode_reward += reward
                 
-            self._decrement_epsilon(episode)
+            self._decrement_epsilon()
             
             if self.reward_prediction_type == 'approximate':
-                self._update_estimator(losses)
+                losses = self._update_estimator(losses)
 
             losses = self._learn(losses)
             
             rewards.append(episode_reward)
-            traditional_losses.append(losses['traditional_loss'])
+            traditional_losses.append(losses['traditional_loss'])            
+            step_losses.append(losses['step_loss'] / (num_action - len(adaptations)))
+            trace_losses.append(losses['trace_loss'] / (num_action - len(adaptations)))
             
             avg_rewards = np.mean(rewards[-self.sma_window:])
             avg_traditional_losses = np.mean(traditional_losses[-self.sma_window:])
@@ -279,14 +267,14 @@ class BasicDQN(CDL):
         return best_language, best_regions, best_rewards
 
     # Retrieve optimal set lines for a given problem instance from the training phase
-    def _generate_language(self, problem_instance, buffer=None):
+    def _generate_language(self, problem_instance, replay_buffer=None):
         self.epsilon = self.epsilon_start
         
         step_dims = self.max_action*2 + 1
         
-        self.reward_buffer = RewardBuffer(self.memory_size, step_dims, self.rng)
-        self.commutative_reward_buffer = CommutativeRewardBuffer(self.memory_size, step_dims, self.rng)
-        self.reward_estimator = RewardEstimator(step_dims, self.estimator_lr, self.step_size, self.gamma)
+        self.reward_buffer = RewardBuffer(self.batch_size, step_dims, self.rng)
+        self.commutative_reward_buffer = CommutativeRewardBuffer(self.batch_size, step_dims, self.rng)
+        self.reward_estimator = RewardEstimator(step_dims, self.dropout_rate, self.estimator_lr, self.step_size, self.gamma)
         self.target_reward_estimator = copy.deepcopy(self.reward_estimator)
         
         self.reward_estimator.train()
@@ -295,8 +283,8 @@ class BasicDQN(CDL):
         self.dqn = DQN(self.max_action, self.action_dims, self.lr)
         self.target_dqn = copy.deepcopy(self.dqn)
         
-        if buffer is None:
-            self.buffer = ReplayBuffer(self.max_action, 1, self.memory_size, self.rng)
+        if replay_buffer is None:
+            self.replay_buffer = ReplayBuffer(self.max_action, 1, self.memory_size, self.rng)
         
         self._init_wandb(problem_instance)
         
@@ -322,17 +310,17 @@ class CommutativeDQN(BasicDQN):
     def _learn(self, losses):
         losses = super()._learn(losses)
         
-        if self.buffer.real_size < self.batch_size:
+        if self.replay_buffer.real_size < self.batch_size:
             return losses
                         
         # Commutative Q-Update
         r3_pred = None
-        indices = self.buffer.sample(self.batch_size)
-        has_previous = self.buffer.has_previous[indices]        
+        indices = self.replay_buffer.sample(self.batch_size)
+        has_previous = self.replay_buffer.has_previous[indices]        
         valid_indices = torch.nonzero(has_previous, as_tuple=True)[0]
         
-        s = self.buffer.prev_state[indices][valid_indices]
-        b = self.buffer.action[indices][valid_indices]
+        s = self.replay_buffer.prev_state[indices][valid_indices]
+        b = self.replay_buffer.action[indices][valid_indices]
         
         if self.reward_prediction_type == 'lookup':        
             key_tuples = [(tuple(_s.tolist()), _b.item()) for _s, _b in zip(s, b)]
@@ -342,14 +330,14 @@ class CommutativeDQN(BasicDQN):
             if torch.any(valid_mask):    
                 # Previous samples
                 s = s[valid_mask]
-                a = self.buffer.prev_action[indices][valid_indices][valid_mask]
-                r_0 = self.buffer.prev_reward[indices][valid_indices][valid_mask]
+                a = self.replay_buffer.prev_action[indices][valid_indices][valid_mask]
+                r_0 = self.replay_buffer.prev_reward[indices][valid_indices][valid_mask]
                 
                 # Current samples
                 b = b[valid_mask]
-                r_1 = self.buffer.reward[indices][valid_indices][valid_mask]
-                s_prime = self.buffer.next_state[indices][valid_indices][valid_mask]
-                done = self.buffer.done[indices][valid_indices][valid_mask]
+                r_1 = self.replay_buffer.reward[indices][valid_indices][valid_mask]
+                s_prime = self.replay_buffer.next_state[indices][valid_indices][valid_mask]
+                done = self.replay_buffer.done[indices][valid_indices][valid_mask]
                 
                 # Lookup table
                 r_2 = np.array([self.ptr_lst[key][0] for i, key in enumerate(key_tuples) if valid_mask[i]])
@@ -359,20 +347,14 @@ class CommutativeDQN(BasicDQN):
                 
                 r3_pred = r_0 + r_1 - r_2
         else:
-            a = self.buffer.prev_action[indices][valid_indices]
-            r_0 = self.buffer.prev_reward[indices][valid_indices]
+            a = self.replay_buffer.prev_action[indices][valid_indices]
+            r_0 = self.replay_buffer.prev_reward[indices][valid_indices]
                         
-            r_1 = self.buffer.reward[indices][valid_indices]
-            s_prime = self.buffer.next_state[indices][valid_indices]
-            done = self.buffer.done[indices][valid_indices]
+            r_1 = self.replay_buffer.reward[indices][valid_indices]
+            s_prime = self.replay_buffer.next_state[indices][valid_indices]
+            done = self.replay_buffer.done[indices][valid_indices]
             
-            # Concatenate states together
-            tmp_tensor = s.clone()
-            tmp_tensor[tmp_tensor == 0] = self.action_dims + 1
-            tmp_tensor = torch.cat([tmp_tensor, b], dim=-1)
-            tmp_tensor = torch.sort(tmp_tensor, dim=-1).values
-            tmp_tensor[tmp_tensor == self.action_dims + 1] = 0
-            s_2 = tmp_tensor[:, :-1]
+            s_2 = self._get_next_state(s, b)
                         
             r3_step = torch.cat([s_2, a, s_prime], dim=-1)
             r3_pred = self.target_reward_estimator(r3_step).flatten().detach()
@@ -383,12 +365,14 @@ class CommutativeDQN(BasicDQN):
             next_q_values = self.target_dqn(s_prime)
             target_q_values = r3_pred + ~done * torch.max(next_q_values, dim=1).values
             commutative_loss = F.mse_loss(selected_q_values, target_q_values)
+            
             self.dqn.optim.zero_grad()
             commutative_loss.backward()
             self.dqn.optim.step()
             
-            self._soft_update_target(self.dqn, self.target_dqn, self.tau)
-            
+            for target_param, local_param in zip(self.target_dqn.parameters(), self.dqn.parameters()):
+                target_param.data.copy_(self.tau * local_param.data + (1.0 - self.tau) * target_param.data)       
+                     
             losses['commutative_loss'] += commutative_loss.item()
         
         return losses
@@ -409,45 +393,40 @@ class CommutativeDQN(BasicDQN):
             language = []
             episode_reward = 0
 
-            _prev_state = []
             prev_state = None
             prev_action = None
             prev_reward = None
             regions, adaptations = self._generate_init_state()
             num_action = len(adaptations)
-            _state = sorted(list(adaptations))
+            state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
             losses = {'traditional_loss': 0, 'commutative_loss': 0, 'step_loss': 0, 'trace_loss': 0}
             while not done:
                 num_action += 1
-                state = _state + (self.max_action - len(_state)) * [0]
                 
                 action = self._select_action(state)
                 line = self.candidate_lines[action]
-                reward, done, next_regions = self._step(problem_instance, regions, line, num_action)
-                
-                _prev_state = _state
-                _state = sorted(_state + [action])
-                next_state = _state + (self.max_action - len(_state)) * [0]
-                
-                self.buffer.add(state, action, reward, next_state, done, prev_state, prev_action, prev_reward)
+                next_state, next_regions, reward, done = self._step(problem_instance, state, regions, action, line, num_action)
+                                
+                self.replay_buffer.add(state, action, reward, next_state, done, prev_state, prev_action, prev_reward)
                 
                 if self.reward_prediction_type == 'lookup':
                     self.ptr_lst[(tuple(state), action)] = (reward, next_state)
                 elif self.reward_prediction_type == 'approximate':
                     self._add_transition(state, action, reward, next_state, prev_state, prev_action, prev_reward)
                 
-                prev_state = _prev_state + (self.max_action - len(_prev_state)) * [0]
+                prev_state = state
                 prev_action = action
                 prev_reward = reward
 
                 language += [line]
+                state = next_state
                 regions = next_regions
                 episode_reward += reward
             
-            self._decrement_epsilon(episode)
+            self._decrement_epsilon()
             
             if self.reward_prediction_type == 'approximate':
-                self._update_estimator(losses)
+                losses = self._update_estimator(losses)
                 
             losses = self._learn(losses)
             
@@ -481,6 +460,6 @@ class CommutativeDQN(BasicDQN):
             
     def _generate_language(self, problem_instance):
         self.ptr_lst = {}
-        self.buffer = CommutativeReplayBuffer(self.max_action, 1, self.memory_size, self.max_action, self.rng)
+        self.replay_buffer = CommutativeReplayBuffer(self.max_action, 1, self.memory_size, self.max_action, self.rng)
 
-        return super()._generate_language(problem_instance, self.buffer)
+        return super()._generate_language(problem_instance, self.replay_buffer)

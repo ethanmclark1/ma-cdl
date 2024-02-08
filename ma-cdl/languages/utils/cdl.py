@@ -1,5 +1,6 @@
 import io
 import os
+import torch
 import wandb
 import pickle
 import warnings
@@ -30,7 +31,7 @@ class CDL:
         self.buffer = None
         self.max_action = 8
         self.state_dims = 128
-        self.action_cost = 0.20
+        self.action_cost = 0.5
         self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
         self.valid_lines = set()
@@ -269,6 +270,27 @@ class CDL:
         utility = mean(safe_area)
         return 3*utility
     
+    # Append action to state and sort
+    def _get_next_state(self, state, action):
+        if isinstance(state, list):
+            state = torch.as_tensor(state)
+        if isinstance(action, int):
+            action = torch.as_tensor([action])
+        
+        tmp_state = state.clone()
+        tmp_action = action.clone()
+        tmp_state[tmp_state == 0] = self.action_dims + 1
+        tmp_state = torch.cat([tmp_state, tmp_action], dim=-1)
+        tmp_state = torch.sort(tmp_state, dim=-1).values
+        tmp_state[tmp_state == self.action_dims + 1] = 0
+        
+        try:
+            next_state = tmp_state[:, :-1]
+        except IndexError:
+            next_state = tmp_state[:-1]
+        
+        return next_state
+    
     # r(s,a,s') = u(s') - u(s) - c(a)
     def _get_reward(self, problem_instance, regions, action, next_regions, num_action):        
         reward = 0
@@ -292,18 +314,19 @@ class CDL:
         return reward, (done or timeout)
             
     # Overlay line in the environment
-    def _step(self, problem_instance, regions, action, num_action):   
-        linestring = CDL.get_shapely_linestring(action)
+    def _step(self, problem_instance, state, regions, action, line, num_action):   
+        linestring = CDL.get_shapely_linestring(line)
         valid_lines = CDL.get_valid_lines(linestring)
         self.valid_lines.update(valid_lines)
         next_regions = CDL.create_regions(list(self.valid_lines))
 
-        reward, done = self._get_reward(problem_instance, regions, action, next_regions, num_action)
+        reward, done = self._get_reward(problem_instance, regions, line, next_regions, num_action)
         
         if done:
             self.valid_lines.clear()
-            
-        return reward, done, next_regions
+        
+        next_state = self._get_next_state(state, action)    
+        return next_state, next_regions, reward, done
     
     def get_language(self, problem_instance):
         approach = self.__class__.__name__

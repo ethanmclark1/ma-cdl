@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from languages.utils.cdl import CDL
 from languages.utils.networks import RewardEstimator, DQN
-from languages.utils.replay_buffer import ReplayBuffer, RewardBuffer, CommutativeReplayBuffer, CommutativeRewardBuffer
+from languages.utils.buffers import ReplayBuffer, RewardBuffer, CommutativeReplayBuffer, CommutativeRewardBuffer
 
 
 class BasicDQN(CDL):
@@ -31,12 +31,12 @@ class BasicDQN(CDL):
         # Reward Estimator
         self.gamma = 0.25
         self.step_size = 2000
-        self.dropout_rate = 0.4
+        self.dropout_rate = 0.3
         self.estimator_tau = 0.01
-        self.estimator_lr = 0.001
+        self.estimator_alpha = 0.001
         
         # DQN
-        self.lr = 0.0002
+        self.alpha = 0.0002
         self.tau = 0.0005
         self.batch_size = 128
         self.sma_window = 1000
@@ -44,15 +44,15 @@ class BasicDQN(CDL):
         self.min_epsilon = 0.10
         self.epsilon_start = 1.0
         self.memory_size = 100000
-        self.num_episodes = 15000
+        self.num_episodes = 10000
         self.epsilon_decay = 0.0005 if self.random_state else 0.000175
         
         self.record_freq = self.num_episodes // num_records
             
     def _init_wandb(self, problem_instance):
         config = super()._init_wandb(problem_instance)
-        config.lr = self.lr
         config.tau = self.tau
+        config.alpha = self.alpha
         config.gamma = self.gamma
         config.step_size = self.step_size
         config.sma_window = self.sma_window
@@ -65,7 +65,7 @@ class BasicDQN(CDL):
         config.dropout_rate = self.dropout_rate
         config.random_state = self.random_state
         config.num_episodes = self.num_episodes
-        config.estimator_lr = self.estimator_lr
+        config.estimator_alpha = self.estimator_alpha
         config.estimator_tau = self.estimator_tau
         config.epsilon_decay = self.epsilon_decay
         config.reward_estimator = self.reward_estimator
@@ -100,7 +100,8 @@ class BasicDQN(CDL):
             action_index = self.rng.choice(len(self.candidate_lines))
         else:
             with torch.no_grad():
-                action_index = self.dqn(torch.FloatTensor(state)).argmax().item()
+                state = torch.FloatTensor(state) if isinstance(state, list) else state.float()
+                action_index = self.dqn(state).argmax().item()
                 
         return action_index
                 
@@ -193,9 +194,9 @@ class BasicDQN(CDL):
     
     def _train(self, problem_instance):
         rewards = []        
+        traditional_losses = []
         step_losses = []
         trace_losses = []
-        traditional_losses = []
         
         best_regions = None
         best_language = None
@@ -205,17 +206,16 @@ class BasicDQN(CDL):
             done = False
             language = []
             episode_reward = 0
+            regions, adaptations = self._generate_init_state()
+            state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
+            num_action = len(adaptations)
             
             prev_state = None
             prev_action = None
             prev_reward = None
-            regions, adaptations = self._generate_init_state()
-            num_action = len(adaptations)
-            state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
             losses = {'traditional_loss': 0, 'step_loss': 0, 'trace_loss': 0}
             while not done:                
                 num_action += 1
-                
                 action = self._select_action(state)
                 line = self.candidate_lines[action]
                 next_state, next_regions, reward, done = self._step(problem_instance, state, regions, action, line, num_action)
@@ -229,10 +229,10 @@ class BasicDQN(CDL):
                 prev_action = action
                 prev_reward = reward
 
-                language += [line]
                 state = next_state
                 regions = next_regions
                 episode_reward += reward
+                language += [line]
                 
             self._decrement_epsilon()
             
@@ -274,13 +274,13 @@ class BasicDQN(CDL):
         
         self.reward_buffer = RewardBuffer(self.batch_size, step_dims, self.rng)
         self.commutative_reward_buffer = CommutativeRewardBuffer(self.batch_size, step_dims, self.rng)
-        self.reward_estimator = RewardEstimator(step_dims, self.dropout_rate, self.estimator_lr, self.step_size, self.gamma)
+        self.reward_estimator = RewardEstimator(step_dims, self.estimator_alpha, self.step_size, self.gamma, self.dropout_rate)
         self.target_reward_estimator = copy.deepcopy(self.reward_estimator)
         
         self.reward_estimator.train()
         self.target_reward_estimator.eval()
         
-        self.dqn = DQN(self.max_action, self.action_dims, self.lr)
+        self.dqn = DQN(self.max_action, self.action_dims, self.alpha)
         self.target_dqn = copy.deepcopy(self.dqn)
         
         if replay_buffer is None:
@@ -347,17 +347,14 @@ class CommutativeDQN(BasicDQN):
                 
                 r3_pred = r_0 + r_1 - r_2
         else:
-            a = self.replay_buffer.prev_action[indices][valid_indices]
-            r_0 = self.replay_buffer.prev_reward[indices][valid_indices]
-                        
-            r_1 = self.replay_buffer.reward[indices][valid_indices]
-            s_prime = self.replay_buffer.next_state[indices][valid_indices]
-            done = self.replay_buffer.done[indices][valid_indices]
-            
             s_2 = self._get_next_state(s, b)
-                        
+            a = self.replay_buffer.prev_action[indices][valid_indices]
+            s_prime = self.replay_buffer.next_state[indices][valid_indices]
+            
             r3_step = torch.cat([s_2, a, s_prime], dim=-1)
             r3_pred = self.target_reward_estimator(r3_step).flatten().detach()
+            
+            done = self.replay_buffer.done[indices][valid_indices]            
             
         if r3_pred is not None:
             q_values = self.dqn(s_2)
@@ -379,10 +376,10 @@ class CommutativeDQN(BasicDQN):
 
     def _train(self, problem_instance):
         rewards = []
-        step_losses = []
-        trace_losses = []
         traditional_losses = []
         commutative_losses = []
+        step_losses = []
+        trace_losses = []
         
         best_regions = None
         best_language = None
@@ -392,17 +389,17 @@ class CommutativeDQN(BasicDQN):
             done = False
             language = []
             episode_reward = 0
+            regions, adaptations = self._generate_init_state()
+            state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
+            num_action = len(adaptations)
 
             prev_state = None
             prev_action = None
             prev_reward = None
-            regions, adaptations = self._generate_init_state()
-            num_action = len(adaptations)
-            state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
+            
             losses = {'traditional_loss': 0, 'commutative_loss': 0, 'step_loss': 0, 'trace_loss': 0}
             while not done:
                 num_action += 1
-                
                 action = self._select_action(state)
                 line = self.candidate_lines[action]
                 next_state, next_regions, reward, done = self._step(problem_instance, state, regions, action, line, num_action)
@@ -418,10 +415,10 @@ class CommutativeDQN(BasicDQN):
                 prev_action = action
                 prev_reward = reward
 
-                language += [line]
                 state = next_state
                 regions = next_regions
                 episode_reward += reward
+                language += [line]
             
             self._decrement_epsilon()
             

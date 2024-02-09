@@ -57,23 +57,25 @@ class Autoencoder(nn.Module):
 
 
 class RewardEstimator(nn.Module):
-    def __init__(self, input_dims, lr, step_size, gamma):
+    def __init__(self, input_dims, lr, step_size, gamma, dropout_rate):
         super(RewardEstimator, self).__init__()
-        self.fc1 = nn.Linear(input_dims, 128)
-        self.ln1 = nn.LayerNorm(128)
+        self.fc1 = nn.Linear(in_features=input_dims, out_features=64)   
+        self.ln1 = nn.LayerNorm(64)
         
-        self.fc2 = nn.Linear(128, 64)
-        self.ln2 = nn.LayerNorm(64)
+        self.fc2 = nn.Linear(in_features=64, out_features=16)     
+        self.ln2 = nn.LayerNorm(16)
         
-        self.fc3 = nn.Linear(64, 1)
+        self.fc3 = nn.Linear(in_features=16, out_features=1)
         
+        self.dropout = nn.Dropout(p=dropout_rate)
         self.optim = Adam(self.parameters(), lr=lr)
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=step_size, gamma=gamma)
         
     def forward(self, x):
-        x = x.float()
         x = F.relu(self.ln1(self.fc1(x)))
+        x = self.dropout(x)
         x = F.relu(self.ln2(self.fc2(x)))
+        x = self.dropout(x)
         return self.fc3(x)
     
 

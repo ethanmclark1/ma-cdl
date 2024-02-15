@@ -29,15 +29,15 @@ class CDL:
         self.random_state = random_state
         
         self.buffer = None
-        self.max_action = 8
+        self.max_action = 10
         self.state_dims = 128
-        self.action_cost = 0.5
+        self.action_cost = 0.02
         self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
         self.valid_lines = set()
         self.name = self.__class__.__name__
         
-        self.configs_to_consider = 25
+        self.configs_to_consider = 1
         self.rng = np.random.default_rng(seed=42)
         self.obstacle_radius = world.large_obstacles[0].radius
     
@@ -243,13 +243,12 @@ class CDL:
         start_region = CDL.localize(start, regions)
         goal_region = CDL.localize(goal, regions)
         
-        path = []
         try:
             path = nx.astar_path(graph, start_region, goal_region, heuristic=euclidean_distance)
             safe_area = [regions[idx].area for idx in path]
             avg_safe_area = mean(safe_area)
         except (nx.NodeNotFound, nx.NetworkXNoPath):
-            avg_safe_area = -4
+            avg_safe_area = 0
             
         return avg_safe_area
     
@@ -260,34 +259,42 @@ class CDL:
         2. Variance of unsafe_area
     """
     def _calc_utility(self, problem_instance, regions):          
-        if isinstance(regions, list):
-            safe_area = []
-            for _ in range(self.configs_to_consider):
-                start, goal, obstacles = self._generate_configuration(problem_instance)
-                config_cost = self._config_utility(start, goal, obstacles, regions)
-                safe_area.append(config_cost)
+        unsafe_area = []
+        for _ in range(self.configs_to_consider):
+            start, goal, obstacles = self._generate_configuration(problem_instance)
+            config_cost = self._config_utility(start, goal, obstacles, regions)
+            unsafe_area.append(config_cost)
 
-        utility = mean(safe_area)
-        return 3*utility
+        utility = mean(unsafe_area)
+        return utility
     
     # Append action to state and sort
     def _get_next_state(self, state, action):
         if isinstance(state, list):
             state = torch.as_tensor(state)
+        elif isinstance(state, np.ndarray):
+            state = torch.as_tensor(state)
+            
         if isinstance(action, int):
-            action = torch.as_tensor([action])
+            action = [action]
+        action = torch.as_tensor(action)
         
         tmp_state = state.clone()
         tmp_action = action.clone()
-        tmp_state[tmp_state == 0] = self.action_dims + 1
-        tmp_state = torch.cat([tmp_state, tmp_action], dim=-1)
-        tmp_state = torch.sort(tmp_state, dim=-1).values
-        tmp_state[tmp_state == self.action_dims + 1] = 0
         
-        try:
-            next_state = tmp_state[:, :-1]
-        except IndexError:
-            next_state = tmp_state[:-1]
+        if 'DQN' in self.name:
+            tmp_state[tmp_state == 0] = self.action_dims + 1
+            tmp_state = torch.cat([tmp_state, tmp_action], dim=-1)
+            tmp_state = torch.sort(tmp_state, dim=-1).values
+            tmp_state[tmp_state == self.action_dims + 1] = 0
+        
+            try:
+                next_state = tmp_state[:, :-1]
+            except IndexError:
+                next_state = tmp_state[:-1]
+        # TODO: Implement for TD3
+        else:
+            a=3
         
         return next_state
     
@@ -300,21 +307,22 @@ class CDL:
             done = np.array_equal(action, self.candidate_lines[0])
         else:
             done = self._is_terminating_action(action)
-            
-        util_s = self._calc_utility(problem_instance, regions)
+        
         if not done:
+            # Check if state and next state are equal
             if len(regions) != len(next_regions):
+                util_s = self._calc_utility(problem_instance, regions)
                 util_s_prime = self._calc_utility(problem_instance, next_regions)
                 reward = util_s_prime - util_s
-            # If len(regions) == len(next_regions) then u(s') - u(s) = 0
             reward -= self.action_cost * num_action
-        elif done and num_action == 1:
-            reward = util_s
             
         return reward, (done or timeout)
             
     # Overlay line in the environment
-    def _step(self, problem_instance, state, regions, action, line, num_action):   
+    def _step(self, problem_instance, state, regions, action, line, num_action): 
+        if line is None:
+            line = action  
+            
         linestring = CDL.get_shapely_linestring(line)
         valid_lines = CDL.get_valid_lines(linestring)
         self.valid_lines.update(valid_lines)
@@ -324,9 +332,10 @@ class CDL:
         
         if done:
             self.valid_lines.clear()
+            
+        next_state = self._get_next_state(state, action)
         
-        next_state = self._get_next_state(state, action)    
-        return next_state, next_regions, reward, done
+        return reward, next_state, next_regions, done
     
     def get_language(self, problem_instance):
         approach = self.__class__.__name__

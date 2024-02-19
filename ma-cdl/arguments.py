@@ -8,7 +8,7 @@ def get_arguments():
     parser.add_argument(
         '--approach', 
         type=str, 
-        default='commutative_dqn', 
+        default='basic_dqn', 
         choices=['basic_dqn', 'commutative_dqn', 'basic_td3', 'commutative_td3'],
         help='Choose which approach to use {default_val: basic_dqn, choices: [%(choices)s]}'
         )
@@ -16,7 +16,7 @@ def get_arguments():
     parser.add_argument(
         '--problem_instance', 
         type=str, 
-        default='bisect', 
+        default='circle', 
         choices=['bisect', 'circle', 'cross', 'corners', 'staggered', 'quarters', 'scatter', 'stellaris'],
         help='Which problem to attempt {default_val: cross, choices: [%(choices)s]}'
         )
@@ -39,8 +39,8 @@ def get_arguments():
     parser.add_argument(
         '--num_large_obstacles',
         type=int, 
-        default=10,
-        help='Number of large obstacles in the environment (no more than 16) {default_val: 6}'
+        default=1,
+        help='Number of large obstacles in the environment (no more than 16) {default_val: 2}'
         )
     
     parser.add_argument(

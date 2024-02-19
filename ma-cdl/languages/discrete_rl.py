@@ -379,7 +379,6 @@ class CommutativeDQN(BasicDQN):
         if indices is None:
             return losses
                         
-        # Commutative Q-Update
         r3_pred = None
         has_previous = self.replay_buffer.has_previous[indices]        
         valid_indices = torch.nonzero(has_previous, as_tuple=True)[0]

@@ -33,26 +33,26 @@ class BasicDQN(CDL):
         num_records = 10
         
         # Reward Estimator
-        self.gamma = 0.25
-        self.step_size = 2000
-        self.dropout_rate = 0.2
-        self.estimator_tau = 0.05
-        self.estimator_alpha = 0.002
+        self.gamma = 0.50
+        self.step_size = 15000
+        self.dropout_rate = 0.40
+        self.estimator_tau = 0.20
+        self.estimator_alpha = 0.005
         self.model_save_interval = 2500
         
         # DQN
         self.tau = 0.0005
         self.alpha = 0.0002
-        self.batch_size = 64
+        self.batch_size = 128
         self.sma_window = 250
         self.granularity = 0.20
         self.min_epsilon = 0.10
         self.epsilon_start = 1.0
         self.memory_size = 100000
-        self.num_episodes = 10000
-        self.epsilon_decay = 0.0003 if self.random_state else 0.000175
+        self.num_episodes = 15000
+        self.epsilon_decay = 0.0005 if self.random_state else 0.000175
         
-        self.eval_episodes = 500
+        self.eval_episodes = 25
         self.record_freq = self.num_episodes // num_records
             
     def _init_wandb(self, problem_instance):
@@ -193,6 +193,10 @@ class BasicDQN(CDL):
         step_losses = []
         trace_losses = []
         
+        dqn_ckpt = None
+        best_avg_rewards = -np.inf
+        warmup_episodes = 1500
+        
         for episode in range(self.num_episodes):
             done = False
             language = []
@@ -250,22 +254,29 @@ class BasicDQN(CDL):
                 'Average Trace Loss': avg_trace_losses
                 }, step=episode)
             
+            if episode > warmup_episodes and avg_rewards > best_avg_rewards:
+                best_avg_rewards = avg_rewards
+                dqn_ckpt = copy.deepcopy(self.dqn.state_dict())
+            
             self._save_model(problem_instance, episode)
+            
+        return dqn_ckpt
     
-    def _get_best_language(self, problem_instance):
+    def _get_best_language(self, problem_instance, dqn_ckpt):
         best_rewards = -np.inf
         best_language = None
         best_regions = None
         
         self.epsilon = 0
-        self.configs_to_consider = 100
-        # Add 18 more large obstacles (20 total) to the world to make it closer to ground truth
-        self.scenario.add_large_obstacles(self.world, 18)
+        self.configs_to_consider = 25
+        self.dqn.load_state_dict(dqn_ckpt)
+        # Add 8 more large obstacles (10 total) to the world to make it closer to ground truth
+        self.scenario.add_large_obstacles(self.world, 8)
         for _ in range(self.eval_episodes):
             done = False
             language = []
             episode_reward = 0
-            regions, adaptations = self._generate_init_state()
+            regions, adaptations = self._generate_fixed_state()
             state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
             num_action = len(adaptations)
             
@@ -310,8 +321,8 @@ class BasicDQN(CDL):
         
         self._init_wandb(problem_instance)
         
-        self._train(problem_instance)
-        best_language, best_regions, best_reward = self._get_best_language(problem_instance)
+        dqn_ckpt = self._train(problem_instance)
+        best_language, best_regions, best_reward = self._get_best_language(problem_instance, dqn_ckpt)
         
         self._log_regions(problem_instance, 'Episode', 'Final', best_regions, best_reward)
         wandb.log({"Language": best_language, "Final Reward": best_reward})
@@ -435,6 +446,10 @@ class CommutativeDQN(BasicDQN):
         step_losses = []
         trace_losses = []
         
+        dqn_ckpt = None
+        best_avg_rewards = -np.inf
+        warmup_episodes = 1500
+        
         for episode in range(self.num_episodes):
             done = False
             language = []
@@ -496,8 +511,14 @@ class CommutativeDQN(BasicDQN):
                 'Average Traditional Loss': avg_traditional_losses,
                 'Average Commutative Loss': avg_commutative_losses
                 }, step=episode)
+            
+            if episode > warmup_episodes and avg_rewards > best_avg_rewards:
+                best_avg_rewards = avg_rewards
+                dqn_ckpt = copy.deepcopy(self.dqn.state_dict())
                 
             self._save_model(problem_instance, episode)
+            
+        return dqn_ckpt
             
     def _generate_language(self, problem_instance):
         self.ptr_lst = {}

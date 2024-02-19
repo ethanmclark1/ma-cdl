@@ -30,8 +30,7 @@ class CDL:
         
         self.buffer = None
         self.max_action = 10
-        self.state_dims = 128
-        self.action_cost = 0.02
+        self.action_cost = 0.03
         self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
         self.valid_lines = set()
@@ -246,11 +245,11 @@ class CDL:
         try:
             path = nx.astar_path(graph, start_region, goal_region, heuristic=euclidean_distance)
             safe_area = [regions[idx].area for idx in path]
-            avg_safe_area = mean(safe_area)
+            avg_unsafe_area = mean(safe_area)
         except (nx.NodeNotFound, nx.NetworkXNoPath):
-            avg_safe_area = 0
+            avg_unsafe_area = 0
             
-        return avg_safe_area
+        return avg_unsafe_area
     
     """ 
     Calculate utility of a given problem (i.e. all configurations) 
@@ -273,7 +272,7 @@ class CDL:
         if isinstance(state, list):
             state = torch.as_tensor(state)
         elif isinstance(state, np.ndarray):
-            state = torch.as_tensor(state)
+            state = torch.as_tensor(state, dtype=torch.float)
             
         if isinstance(action, int):
             action = [action]
@@ -287,15 +286,39 @@ class CDL:
             tmp_state = torch.cat([tmp_state, tmp_action], dim=-1)
             tmp_state = torch.sort(tmp_state, dim=-1).values
             tmp_state[tmp_state == self.action_dims + 1] = 0
-        
-            try:
+            
+            if len(tmp_state.shape) == 3:
                 next_state = tmp_state[:, :-1]
-            except IndexError:
+            else:
                 next_state = tmp_state[:-1]
-        # TODO: Implement for TD3
         else:
-            a=3
-        
+            single_sample = len(tmp_state.shape) == 1
+            tmp_state[tmp_state == 0] = 1.
+            
+            # Ensure tmp_state and tmp_action are at least 2D; reshape if 1D
+            if tmp_state.dim() == 1:
+                tmp_state = tmp_state.unsqueeze(0)
+            if tmp_action.dim() == 1:
+                tmp_action = tmp_action.unsqueeze(0)
+
+            # Reshape to have the size [-1, N, 3] where N is dynamic
+            tmp_state = tmp_state.reshape(-1, tmp_state.shape[-1] // 3, 3)
+            tmp_action = tmp_action.reshape(-1, tmp_action.shape[-1] // 3, 3)
+
+            next_state = torch.cat([tmp_state, tmp_action], dim=1)
+            row_sums = torch.sum(next_state, dim=-1, keepdim=True)
+            sorted_indices = torch.argsort(row_sums, dim=1)
+            # Expand sorted_indices to match next_state dimensions for gathering
+            sorted_indices = sorted_indices.expand(-1, -1, next_state.shape[-1])
+            next_state = torch.gather(next_state, 1, sorted_indices)
+            next_state[next_state == 1.] = 0
+
+            # Remove the last element in the middle dimension and flatten if original was 1D
+            if single_sample:
+                next_state = next_state.squeeze(0)[:-1].flatten()
+            else:
+                next_state = next_state[:, :-1].reshape(next_state.shape[0], -1)
+              
         return next_state
     
     # r(s,a,s') = u(s') - u(s) - c(a)

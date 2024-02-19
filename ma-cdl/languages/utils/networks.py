@@ -10,10 +10,13 @@ torch.manual_seed(42)
 class RewardEstimator(nn.Module):
     def __init__(self, input_dims, lr, step_size, gamma, dropout_rate):
         super(RewardEstimator, self).__init__()
-        self.fc1 = nn.Linear(in_features=input_dims, out_features=64)   
-        self.ln1 = nn.LayerNorm(64)
         
-        self.fc2 = nn.Linear(in_features=64, out_features=32)     
+        fc1_output = 128 if input_dims == 63 else 64
+        
+        self.fc1 = nn.Linear(in_features=input_dims, out_features=fc1_output)   
+        self.ln1 = nn.LayerNorm(fc1_output)
+        
+        self.fc2 = nn.Linear(in_features=fc1_output, out_features=32)     
         self.ln2 = nn.LayerNorm(32)
         
         self.fc3 = nn.Linear(in_features=32, out_features=1)

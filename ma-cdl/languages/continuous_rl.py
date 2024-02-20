@@ -32,25 +32,26 @@ class BasicTD3(CDL):
         
     def _init_hyperparams(self):
         num_records = 10
+        self.eval_episodes = 25
         
         # Reward Estimator
         self.gamma = 0.25
         self.step_size = 15000
-        self.dropout_rate = 0.5
+        self.dropout_rate = 0.4
         self.estimator_tau = 0.01
         self.estimator_alpha = 0.008
         self.model_save_interval = 2500
         
         # TD3
-        self.tau = 0.001
+        self.tau = 0.0005
         self.policy_freq = 2
         self.noise_clip = 0.3
         self.batch_size = 128
         self.sma_window = 250
         self.policy_noise = 0.1
-        self.memory_size = 100000
         self.num_episodes = 15000
-        self.actor_alpha = 0.0004
+        self.memory_size = 100000
+        self.actor_alpha = 0.0003
         self.critic_alpha = 0.0004
         self.min_exploration = 0.1
         self.exploration_noise = 0.2
@@ -75,8 +76,10 @@ class BasicTD3(CDL):
         config.policy_noise = self.policy_noise
         config.num_episodes = self.num_episodes
         config.estimator_tau = self.estimator_tau
+        config.eval_episodes = self.eval_episodes
         config.estimator_alpha = self.estimator_alpha
         config.min_exploration = self.min_exploration
+        config.reward_estimator = self.reward_estimator
         config.exploration_noise = self.exploration_noise
         config.exploration_decay = self.exploration_decay
         config.model_save_interval = self.model_save_interval
@@ -207,7 +210,7 @@ class BasicTD3(CDL):
             language = []
             episode_reward = 0
             regions, adaptations = self._generate_init_state()
-            state = np.concatenate(sorted(list(adaptations), key=np.sum) + self.max_action * [empty_action])
+            state = np.concatenate(sorted(list(adaptations), key=np.sum) + (self.max_action - len(adaptations)) * [empty_action])
             num_action = len(adaptations)
             
             prev_state = None

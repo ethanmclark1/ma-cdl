@@ -280,6 +280,7 @@ class CDL:
         
         tmp_state = state.clone()
         tmp_action = action.clone()
+        single_sample = len(tmp_state.shape) == 1
         
         if 'DQN' in self.name:
             tmp_state[tmp_state == 0] = self.action_dims + 1
@@ -287,12 +288,11 @@ class CDL:
             tmp_state = torch.sort(tmp_state, dim=-1).values
             tmp_state[tmp_state == self.action_dims + 1] = 0
             
-            if len(tmp_state.shape) == 3:
-                next_state = tmp_state[:, :-1]
-            else:
+            if single_sample:
                 next_state = tmp_state[:-1]
+            else:
+                next_state = tmp_state[:, :-1]
         else:
-            single_sample = len(tmp_state.shape) == 1
             tmp_state[tmp_state == 0] = 1.
             
             # Ensure tmp_state and tmp_action are at least 2D; reshape if 1D

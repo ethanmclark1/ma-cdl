@@ -64,7 +64,6 @@ class BasicDQN(CDL):
         config.sma_window = self.sma_window
         config.max_action = self.max_action
         config.batch_size = self.batch_size
-        config.granularity = self.granularity 
         config.min_epsilon = self.min_epsilon
         config.action_cost = self.action_cost
         config.memory_size = self.memory_size

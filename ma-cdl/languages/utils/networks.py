@@ -76,14 +76,14 @@ class Critic(nn.Module):
         # Q1 architecture
         self.fc1 = nn.Linear(state_dim + action_dim, 256)
         self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 64)
-        self.fc4 = nn.Linear(64, 1)
+        self.fc3 = nn.Linear(256, 128)
+        self.fc4 = nn.Linear(128, 1)
 
         # Q2 architecture
         self.fc5 = nn.Linear(state_dim + action_dim, 256)
         self.fc6 = nn.Linear(256, 256)
-        self.fc7 = nn.Linear(256, 64)
-        self.fc8 = nn.Linear(64, 1)
+        self.fc7 = nn.Linear(256, 128)
+        self.fc8 = nn.Linear(128, 1)
         
         self.optim = Adam(self.parameters(), lr=lr)
 

@@ -31,6 +31,8 @@ class CDL:
         self.buffer = None
         self.max_action = 10
         self.action_cost = 0.03
+
+        self.utility_multiplier = 1
         self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
         self.valid_lines = set()
@@ -227,10 +229,25 @@ class CDL:
                     graph.add_edge(idx, neighbor_idx)
 
         return graph
-        
+    
+    def _plot_regions(self, regions, start=None, start_region=None, goal=None, goal_region=None):
+        for idx, region in enumerate(regions):
+            if start_region and idx == start_region:
+                plt.fill(*region.exterior.xy, color='r', alpha=0.3)
+            elif goal_region and idx == goal_region:
+                plt.fill(*region.exterior.xy, color='g', alpha=0.3)
+            else:
+                plt.fill(*region.exterior.xy)
+            plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
+
+        if start and goal:
+            plt.scatter(*start, c='r', s=100, edgecolor='black', label='Start')
+            plt.scatter(*goal, c='g', s=100, edgecolor='black', label='Goal')
+        plt.show()
+                
     """
     Calculate utility of an adaptation with respect to the start, goal, and obstacles
-    based on the amount of unsafe area (flexibility).
+    based on the amount of safe area (flexibility).
     """
     def _config_utility(self, start, goal, obstacles, regions): 
         def euclidean_distance(a, b):
@@ -245,26 +262,20 @@ class CDL:
         try:
             path = nx.astar_path(graph, start_region, goal_region, heuristic=euclidean_distance)
             safe_area = [regions[idx].area for idx in path]
-            avg_unsafe_area = mean(safe_area)
+            avg_safe_area = self.utility_multiplier*mean(safe_area)
         except (nx.NodeNotFound, nx.NetworkXNoPath):
-            avg_unsafe_area = 0
+            avg_safe_area = 0
             
-        return avg_unsafe_area
+        return avg_safe_area
     
-    """ 
-    Calculate utility of a given problem (i.e. all configurations) 
-    with respect to the regions and the given constraints: 
-        1. Mean of unsafe area
-        2. Variance of unsafe_area
-    """
     def _calc_utility(self, problem_instance, regions):          
-        unsafe_area = []
+        safe_area = []
         for _ in range(self.configs_to_consider):
             start, goal, obstacles = self._generate_configuration(problem_instance)
             config_cost = self._config_utility(start, goal, obstacles, regions)
-            unsafe_area.append(config_cost)
+            safe_area.append(config_cost)
 
-        utility = mean(unsafe_area)
+        utility = mean(safe_area)
         return utility
     
     # Append action to state and sort

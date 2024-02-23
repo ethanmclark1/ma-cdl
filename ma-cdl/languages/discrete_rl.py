@@ -16,7 +16,9 @@ class BasicDQN(CDL):
         self._init_hyperparams()         
         
         self.name = self.__class__.__name__
-        self.output_dir = f'ma-cdl/languages/history/estimator/{self.name.lower()}'       
+        self.output_dir = f'ma-cdl/languages/history/{self.name.lower()}'  
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)     
         
         self.dqn = None
         self.target_dqn = None
@@ -33,18 +35,16 @@ class BasicDQN(CDL):
         num_records = 10
         
         # Reward Estimator
-        self.gamma = 0.50
-        self.step_size = 15000
         self.dropout_rate = 0.40
-        self.estimator_tau = 0.20
-        self.estimator_alpha = 0.005
+        self.estimator_tau = 0.095
+        self.estimator_alpha = 0.02
         self.model_save_interval = 2500
         
         # DQN
         self.tau = 0.0005
         self.alpha = 0.0002
         self.batch_size = 128
-        self.sma_window = 250
+        self.sma_window = 400
         self.granularity = 0.20
         self.min_epsilon = 0.10
         self.epsilon_start = 1.0
@@ -59,8 +59,6 @@ class BasicDQN(CDL):
         config = super()._init_wandb(problem_instance)
         config.tau = self.tau
         config.alpha = self.alpha
-        config.gamma = self.gamma
-        config.step_size = self.step_size
         config.sma_window = self.sma_window
         config.max_action = self.max_action
         config.batch_size = self.batch_size
@@ -75,18 +73,26 @@ class BasicDQN(CDL):
         config.epsilon_decay = self.epsilon_decay
         config.estimator_alpha = self.estimator_alpha
         config.reward_estimator = self.reward_estimator
+        config.utility_multiplier = self.utility_multiplier
         config.model_save_interval = self.model_save_interval
         config.configs_to_consider = self.configs_to_consider
         config.reward_prediction_type = self.reward_prediction_type
+        config.num_large_obstacles = len(self.world.large_obstacles)
         
-    def _save_model(self, problem_instance, episode):
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
-            
-        if episode % self.model_save_interval == 0:
+    def _save_model(self, problem_instance, model, episode=None):    
+        if episode is not None: # Reward Estimator
             filename = f'{problem_instance}_{episode}.pt'
-            file_path = os.path.join(self.output_dir, filename)
-            torch.save(self.reward_estimator.state_dict(), file_path)
+        else: # DQN
+            filename = f'{problem_instance}_{self.reward_prediction_type}.pt'
+            
+        file_path = os.path.join(self.output_dir, filename)
+        torch.save(model.state_dict(), file_path)
+        
+    def _load_model(self, problem_instance, model):
+        filename = f'{problem_instance}_{self.reward_prediction_type}.pt'
+        file_path = os.path.join(self.output_dir, filename)
+        model.load_state_dict(torch.load(file_path))
+        return model
         
     def _create_candidate_set_of_lines(self):
         self.candidate_lines = []
@@ -176,7 +182,6 @@ class BasicDQN(CDL):
         step_loss = F.mse_loss(r_pred, rewards)
         step_loss.backward()
         self.reward_estimator.optim.step()
-        self.reward_estimator.scheduler.step()
         
         if traditional_update:
             for target_param, local_param in zip(self.target_reward_estimator.parameters(), self.reward_estimator.parameters()):
@@ -192,7 +197,6 @@ class BasicDQN(CDL):
         step_losses = []
         trace_losses = []
         
-        dqn_ckpt = None
         best_avg_rewards = -np.inf
         warmup_episodes = 1500
         
@@ -255,22 +259,22 @@ class BasicDQN(CDL):
             
             if episode > warmup_episodes and avg_rewards > best_avg_rewards:
                 best_avg_rewards = avg_rewards
-                dqn_ckpt = copy.deepcopy(self.dqn.state_dict())
-            
-            self._save_model(problem_instance, episode)
-            
-        return dqn_ckpt
-    
-    def _get_best_language(self, problem_instance, dqn_ckpt):
+                self._save_model(problem_instance, self.dqn)
+                
+            if episode % self.model_save_interval == 0:
+                self._save_model(problem_instance, self.reward_estimator, episode=episode)
+                            
+    def _get_best_language(self, problem_instance):
         best_rewards = -np.inf
         best_language = None
         best_regions = None
         
         self.epsilon = 0
-        self.configs_to_consider = 25
-        self.dqn.load_state_dict(dqn_ckpt)
+        self.configs_to_consider = 50
+        self._load_model(problem_instance, self.dqn)
         # Add 8 more large obstacles (10 total) to the world to make it closer to ground truth
-        self.scenario.add_large_obstacles(self.world, 8)
+        add_obstacles = 10 - len(self.world.large_obstacles)
+        self.scenario.add_large_obstacles(self.world, add_obstacles)
         for _ in range(self.eval_episodes):
             done = False
             language = []
@@ -302,11 +306,11 @@ class BasicDQN(CDL):
     def _generate_language(self, problem_instance, replay_buffer=None):
         self.epsilon = self.epsilon_start
         
-        step_dims = self.max_action*2 + 1
+        step_dims = 2*self.max_action + 1
         
         self.reward_buffer = RewardBuffer(self.batch_size, step_dims, self.rng)
         self.commutative_reward_buffer = CommutativeRewardBuffer(self.batch_size, step_dims, self.rng)
-        self.reward_estimator = RewardEstimator(step_dims, self.estimator_alpha, self.step_size, self.gamma, self.dropout_rate)
+        self.reward_estimator = RewardEstimator(step_dims, self.estimator_alpha, self.dropout_rate)
         self.target_reward_estimator = copy.deepcopy(self.reward_estimator)
         
         self.reward_estimator.train()
@@ -320,8 +324,8 @@ class BasicDQN(CDL):
         
         self._init_wandb(problem_instance)
         
-        dqn_ckpt = self._train(problem_instance)
-        best_language, best_regions, best_reward = self._get_best_language(problem_instance, dqn_ckpt)
+        self._train(problem_instance)
+        best_language, best_regions, best_reward = self._get_best_language(problem_instance)
         
         self._log_regions(problem_instance, 'Episode', 'Final', best_regions, best_reward)
         wandb.log({"Language": best_language, "Final Reward": best_reward})
@@ -444,7 +448,6 @@ class CommutativeDQN(BasicDQN):
         step_losses = []
         trace_losses = []
         
-        dqn_ckpt = None
         best_avg_rewards = -np.inf
         warmup_episodes = 1500
         
@@ -512,12 +515,11 @@ class CommutativeDQN(BasicDQN):
             
             if episode > warmup_episodes and avg_rewards > best_avg_rewards:
                 best_avg_rewards = avg_rewards
-                dqn_ckpt = copy.deepcopy(self.dqn.state_dict())
+                self._save_model(problem_instance, self.dqn)
                 
-            self._save_model(problem_instance, episode)
-            
-        return dqn_ckpt
-            
+            if episode % self.model_save_interval == 0:
+                self._save_model(problem_instance, self.reward_estimator, episode=episode)
+                        
     def _generate_language(self, problem_instance):
         self.ptr_lst = {}
         self.replay_buffer = CommutativeReplayBuffer(self.max_action, 1, self.memory_size, self.max_action, self.rng)

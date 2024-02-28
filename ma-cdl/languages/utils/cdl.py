@@ -30,9 +30,9 @@ class CDL:
         
         self.buffer = None
         self.max_action = 10
-        self.action_cost = 0.03
+        self.action_cost = 0.075
+        self.util_multiplier = 1
 
-        self.utility_multiplier = 1
         self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
         self.valid_lines = set()
@@ -53,6 +53,7 @@ class CDL:
             pickle.dump(language, file)
     
     def _load(self, approach, problem_instance):
+        # TODO: Remove this in final version
         problem_instance = 'cheese'
         directory = f'ma-cdl/languages/history/{approach.lower()}'
         filename = f'{problem_instance}.pkl'
@@ -63,9 +64,10 @@ class CDL:
     
     def _init_wandb(self, problem_instance):
         wandb.init(
-            project='ma-cdl', 
+            project=f'{self.__class__.__name__[-3:]}', 
             entity='ethanmclark1', 
-            name=f'{self.__class__.__name__}/{problem_instance.capitalize()}'
+            name=f'{problem_instance.capitalize()}',
+            tags=[f'{self.__class__.__name__[:-3]}']
             )
         
         config = wandb.config
@@ -185,8 +187,8 @@ class CDL:
     # Find the region that contains the entity
     @staticmethod
     def localize(entity, language):
-        point = Point(entity)
         try:
+            point = Point(entity)
             region_idx = list(map(lambda region: region.contains(point), language)).index(True)
         except:
             region_idx = None
@@ -240,7 +242,7 @@ class CDL:
                 plt.fill(*region.exterior.xy)
             plt.text(region.centroid.x, region.centroid.y, idx, ha='center', va='center')
 
-        if start and goal:
+        if start is not None:
             plt.scatter(*start, c='r', s=100, edgecolor='black', label='Start')
             plt.scatter(*goal, c='g', s=100, edgecolor='black', label='Goal')
         plt.show()
@@ -262,7 +264,7 @@ class CDL:
         try:
             path = nx.astar_path(graph, start_region, goal_region, heuristic=euclidean_distance)
             safe_area = [regions[idx].area for idx in path]
-            avg_safe_area = self.utility_multiplier*mean(safe_area)
+            avg_safe_area = self.util_multiplier*mean(safe_area)
         except (nx.NodeNotFound, nx.NetworkXNoPath):
             avg_safe_area = 0
             
@@ -343,12 +345,11 @@ class CDL:
             done = self._is_terminating_action(action)
         
         if not done:
-            # Check if state and next state are equal
             if len(regions) != len(next_regions):
                 util_s = self._calc_utility(problem_instance, regions)
                 util_s_prime = self._calc_utility(problem_instance, next_regions)
                 reward = util_s_prime - util_s
-            reward -= self.action_cost * num_action
+            reward -= (self.action_cost * np.sqrt(num_action))
             
         return reward, (done or timeout)
             

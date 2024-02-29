@@ -36,7 +36,6 @@ class BasicDQN(CDL):
         self.dropout_rate = 0.40
         self.estimator_tau = 0.095
         self.estimator_alpha = 0.008
-        self.model_save_interval = 2500
         
         # DQN
         self.tau = 0.0005
@@ -48,14 +47,14 @@ class BasicDQN(CDL):
         self.epsilon_start = 1.0
         self.memory_size = 100000
         self.num_episodes = 15000
-        self.epsilon_decay = 0.0005 if self.random_state else 0.000175
+        self.epsilon_decay = 0.0005
         
         # Evaluation Settings (episodes)
         self.eval_freq = 125
         self.eval_window = 50
-        self.eval_configs = 15
+        self.eval_configs = 20
         self.eval_episodes = 10
-        self.eval_obstacles = 10
+        self.eval_obstacles = 15
         
     def _init_wandb(self, problem_instance):
         config = super()._init_wandb(problem_instance)
@@ -76,7 +75,6 @@ class BasicDQN(CDL):
         config.util_multiplier = self.util_multiplier
         config.estimator_alpha = self.estimator_alpha
         config.reward_estimator = self.reward_estimator
-        config.model_save_interval = self.model_save_interval
         config.configs_to_consider = self.configs_to_consider
         config.reward_prediction_type = self.reward_prediction_type
         config.num_large_obstacles = len(self.world.large_obstacles)
@@ -202,12 +200,12 @@ class BasicDQN(CDL):
         training_configs = self.configs_to_consider
         self.configs_to_consider = self.eval_configs
         new_obstacles = self.eval_obstacles - len(self.world.large_obstacles)
-        self.scenario.add_large_obstacles(self.world, 10 - len(self.world.large_obstacles))
+        self.scenario.add_large_obstacles(self.world, new_obstacles)
         for _ in range(self.eval_episodes):
             done = False
             language = []
             episode_reward = 0
-            regions, adaptations = self._generate_init_state()
+            regions, adaptations = self._generate_fixed_state()
             state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
             num_action = len(adaptations)
             

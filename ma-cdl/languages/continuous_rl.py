@@ -48,12 +48,12 @@ class BasicTD3(CDL):
         self.batch_size = 256
         self.sma_window = 500
         self.policy_noise = 0.2
-        self.memory_size = 150000
+        self.memory_size = 500000
         self.actor_alpha = 0.0003
         self.critic_alpha = 0.0003
-        self.max_timesteps = 300000
-        self.start_timesteps = 50000
-        self.start_timesteps = 256
+        self.max_timesteps = 250000
+        self.start_timesteps = 25000
+        self.start_timesteps = 1000
         self.exploration_noise = 0.1
         
         # Evaluation Settings (timesteps)
@@ -199,12 +199,12 @@ class BasicTD3(CDL):
         training_configs = self.configs_to_consider
         self.configs_to_consider = self.eval_configs
         new_obstacles = self.eval_obstacles - len(self.world.large_obstacles)
-        self.scenario.add_large_obstacles(self.world, 10 - len(self.world.large_obstacles))
+        self.scenario.add_large_obstacles(self.world, new_obstacles)
         for _ in range(self.eval_episodes):
             done = False
             language = []
             episode_reward = 0
-            regions, adaptations = self._generate_init_state()
+            regions, adaptations = self._generate_fixed_state()
             state = np.concatenate(sorted(list(adaptations), key=np.sum) + (self.max_action - len(adaptations)) * [empty_action])
             num_action = len(adaptations)
             

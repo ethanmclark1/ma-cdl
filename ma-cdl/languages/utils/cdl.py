@@ -63,11 +63,16 @@ class CDL:
         return language
     
     def _init_wandb(self, problem_instance):
+        if self.reward_prediction_type == 'approximate':
+            reward_prediction_type = 'Estimator'
+        else:
+            reward_prediction_type = 'Lookup'
+        
         wandb.init(
             project=f'{self.__class__.__name__[-3:]}', 
             entity='ethanmclark1', 
-            name=f'{problem_instance.capitalize()}',
-            tags=[f'{self.__class__.__name__[:-3]}']
+            name=f'{self.__class__.__name__} w/ {reward_prediction_type.capitalize()}',
+            tags=[f'{problem_instance.capitalize()}']
             )
         
         config = wandb.config

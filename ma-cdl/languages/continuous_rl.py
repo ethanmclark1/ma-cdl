@@ -48,7 +48,7 @@ class BasicTD3(CDL):
         self.batch_size = 256
         self.sma_window = 500
         self.policy_noise = 0.2
-        self.memory_size = 500000
+        self.memory_size = 100000
         self.actor_alpha = 0.0003
         self.critic_alpha = 0.0003
         self.max_timesteps = 250000
@@ -57,10 +57,10 @@ class BasicTD3(CDL):
         self.exploration_noise = 0.1
         
         # Evaluation Settings (timesteps)
-        self.eval_freq = 2500
-        self.eval_window = 50
+        self.eval_window = 10
+        self.eval_freq = 5000
         self.eval_configs = 15
-        self.eval_episodes = 10
+        self.eval_episodes = 5
         self.eval_obstacles = 10
         
     def _init_wandb(self, problem_instance):
@@ -80,9 +80,11 @@ class BasicTD3(CDL):
         config.random_state = self.random_state
         config.dropout_rate = self.dropout_rate
         config.policy_noise = self.policy_noise
+        config.eval_configs = self.eval_configs
         config.max_timesteps = self.max_timesteps
         config.estimator_tau = self.estimator_tau
         config.eval_episodes = self.eval_episodes
+        config.eval_obstacles = self.eval_obstacles
         config.util_multiplier = self.util_multiplier
         config.start_timesteps = self.start_timesteps
         config.estimator_alpha = self.estimator_alpha

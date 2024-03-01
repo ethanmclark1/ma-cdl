@@ -45,54 +45,43 @@ class BasicDQN(CDL):
         self.granularity = 0.20
         self.min_epsilon = 0.10
         self.epsilon_start = 1.0
-        self.memory_size = 100000
-        self.num_episodes = 15000
+        self.memory_size = 75000
+        self.num_episodes = 20000
         self.epsilon_decay = 0.0005
         
         # Evaluation Settings (episodes)
-        self.eval_freq = 125
-        self.eval_window = 50
-        self.eval_configs = 20
+        self.eval_freq = 40
+        self.eval_window = 10
+        self.eval_configs = 15
         self.eval_episodes = 10
-        self.eval_obstacles = 15
+        self.eval_obstacles = 10
         
     def _init_wandb(self, problem_instance):
         config = super()._init_wandb(problem_instance)
         config.tau = self.tau
         config.alpha = self.alpha
+        config.eval_freq = self.eval_freq
         config.sma_window = self.sma_window
         config.max_action = self.max_action
         config.batch_size = self.batch_size
+        config.eval_window = self.eval_window
         config.min_epsilon = self.min_epsilon
         config.action_cost = self.action_cost
         config.memory_size = self.memory_size
+        config.eval_configs = self.eval_configs
         config.dropout_rate = self.dropout_rate
         config.random_state = self.random_state
         config.num_episodes = self.num_episodes
         config.eval_episodes = self.eval_episodes
         config.estimator_tau = self.estimator_tau
         config.epsilon_decay = self.epsilon_decay
+        config.eval_obstacles = self.eval_obstacles
         config.util_multiplier = self.util_multiplier
         config.estimator_alpha = self.estimator_alpha
         config.reward_estimator = self.reward_estimator
         config.configs_to_consider = self.configs_to_consider
         config.reward_prediction_type = self.reward_prediction_type
         config.num_large_obstacles = len(self.world.large_obstacles)
-        
-    def _save_model(self, problem_instance, model, episode=None):    
-        if episode is not None: # Reward Estimator
-            filename = f'{problem_instance}_{episode}.pt'
-        else: # DQN
-            filename = f'{problem_instance}_{self.reward_prediction_type}.pt'
-            
-        file_path = os.path.join(self.output_dir, filename)
-        torch.save(model.state_dict(), file_path)
-        
-    def _load_model(self, problem_instance, model):
-        filename = f'{problem_instance}_{self.reward_prediction_type}.pt'
-        file_path = os.path.join(self.output_dir, filename)
-        model.load_state_dict(torch.load(file_path))
-        return model
         
     def _create_candidate_set_of_lines(self):
         self.candidate_lines = []
@@ -205,7 +194,7 @@ class BasicDQN(CDL):
             done = False
             language = []
             episode_reward = 0
-            regions, adaptations = self._generate_fixed_state()
+            regions, adaptations = self._generate_init_state()
             state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
             num_action = len(adaptations)
             

@@ -30,8 +30,8 @@ class CDL:
         
         self.buffer = None
         self.max_action = 10
-        self.action_cost = 0.075
-        self.util_multiplier = 1
+        self.action_cost = 0.05
+        self.util_multiplier = 3
 
         self._generate_init_state = self._generate_random_state if random_state else self._generate_fixed_state
         
@@ -354,7 +354,7 @@ class CDL:
                 util_s = self._calc_utility(problem_instance, regions)
                 util_s_prime = self._calc_utility(problem_instance, next_regions)
                 reward = util_s_prime - util_s
-            reward -= (self.action_cost * np.sqrt(num_action))
+            reward -= self.action_cost * num_action
             
         return reward, (done or timeout)
             

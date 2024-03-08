@@ -45,15 +45,14 @@ class BasicDQN(CDL):
         self.granularity = 0.20
         self.min_epsilon = 0.10
         self.epsilon_start = 1.0
-        self.memory_size = 75000
-        self.num_episodes = 20000
-        self.epsilon_decay = 0.0005
+        self.memory_size = 100000
+        self.num_episodes = 15000
+        self.epsilon_decay = 0.0005 if self.random_state else 0.0002
         
         # Evaluation Settings (episodes)
         self.eval_freq = 40
-        self.eval_window = 10
-        self.eval_configs = 15
-        self.eval_episodes = 10
+        self.eval_window = 20
+        self.eval_configs = 250
         self.eval_obstacles = 10
         
     def _init_wandb(self, problem_instance):
@@ -72,7 +71,6 @@ class BasicDQN(CDL):
         config.dropout_rate = self.dropout_rate
         config.random_state = self.random_state
         config.num_episodes = self.num_episodes
-        config.eval_episodes = self.eval_episodes
         config.estimator_tau = self.estimator_tau
         config.epsilon_decay = self.epsilon_decay
         config.eval_obstacles = self.eval_obstacles
@@ -180,53 +178,40 @@ class BasicDQN(CDL):
         return losses
     
     def _eval_policy(self, problem_instance):
-        rewards  = []
-        
-        best_regions = None
-        best_language = None
-        best_reward = -np.inf
-        
         training_configs = self.configs_to_consider
         self.configs_to_consider = self.eval_configs
         new_obstacles = self.eval_obstacles - len(self.world.large_obstacles)
         self.scenario.add_large_obstacles(self.world, new_obstacles)
-        for _ in range(self.eval_episodes):
-            done = False
-            language = []
-            episode_reward = 0
-            regions, adaptations = self._generate_init_state()
-            state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
-            num_action = len(adaptations)
-            
-            while not done:
-                num_action += 1
-                action = self._select_action(state, is_train=False)
-                line = self.candidate_lines[action]
-                reward, next_state, next_regions, done = self._step(problem_instance, state, regions, action, line, num_action)
-                
-                state = next_state
-                regions = next_regions
-                episode_reward += reward
-                language += [line]
-                
-            rewards.append(episode_reward)
-            
-            if episode_reward > best_reward:
-                best_reward = episode_reward
-                best_language = language
-                best_regions = regions
         
+        _return = 0
+        done = False
+        language = []
+        regions, adaptations = self._generate_fixed_state()
+        state = sorted(list(adaptations)) + (self.max_action - len(adaptations)) * [0]
+        num_action = len(adaptations)
+        
+        while not done:
+            num_action += 1
+            action = self._select_action(state, is_train=False)
+            line = self.candidate_lines[action]
+            reward, next_state, next_regions, done = self._step(problem_instance, state, regions, action, line, num_action)
+            
+            state = next_state
+            regions = next_regions
+            _return += reward
+            language += [line]
+                    
         self.configs_to_consider = training_configs
         self.world.large_obstacles = self.world.large_obstacles[:-new_obstacles]
-        return np.mean(rewards), best_reward, best_language, best_regions
+        return _return, language, regions
             
     def _train(self, problem_instance):    
-        rewards = []    
+        returns = []    
         traditional_losses = []
         step_losses = []
         trace_losses = []
         
-        best_reward = -np.inf
+        best_return = -np.inf
         
         for episode in range(self.num_episodes):
             done = False
@@ -265,15 +250,15 @@ class BasicDQN(CDL):
             _, losses = self._learn(losses)
             
             if episode % self.eval_freq == 0:
-                eval_rewards, best_eval_reward, best_eval_language, best_eval_regions = self._eval_policy(problem_instance)
-                rewards.append(eval_rewards)
-                avg_rewards = np.mean(rewards[-self.eval_window:])
-                wandb.log({'Average Reward': avg_rewards}, step=episode)
+                eval_return, eval_language, eval_regions = self._eval_policy(problem_instance)
+                returns.append(eval_return)
+                avg_returns = np.mean(returns[-self.eval_window:])
+                wandb.log({'Average Return': avg_returns}, step=episode)
                 
-                if best_eval_reward > best_reward:
-                    best_reward = best_eval_reward
-                    best_language = best_eval_language
-                    best_regions = best_eval_regions
+                if eval_return > best_return:
+                    best_return = eval_return
+                    best_language = eval_language
+                    best_regions = eval_regions
             
             traditional_losses.append(losses['traditional_loss'])            
             step_losses.append(losses['step_loss'] / (num_action - len(adaptations)))
@@ -290,7 +275,7 @@ class BasicDQN(CDL):
                 }, step=episode)
 
         best_language = np.array(best_language).reshape(-1,3)
-        return best_reward, best_language, best_regions
+        return best_return, best_language, best_regions
 
     # Retrieve optimal set lines for a given problem instance from the training phase
     def _generate_language(self, problem_instance, replay_buffer=None):
@@ -314,10 +299,10 @@ class BasicDQN(CDL):
         
         self._init_wandb(problem_instance)
         
-        best_reward, best_language, best_regions = self._train(problem_instance)
+        best_return, best_language, best_regions = self._train(problem_instance)
         
-        self._log_regions(problem_instance, 'Episode', 'Final', best_regions, best_reward)
-        wandb.log({"Language": best_language, "Final Reward": best_reward})
+        self._log_regions(problem_instance, 'Episode', 'Final', best_regions, best_return)
+        wandb.log({"Language": best_language, "Return": best_return})
         wandb.finish()  
         
         return best_language
@@ -431,13 +416,13 @@ class CommutativeDQN(BasicDQN):
         return losses
 
     def _train(self, problem_instance):
-        rewards = []
+        returns = []
         traditional_losses = []
         commutative_losses = []
         step_losses = []
         trace_losses = []
         
-        best_reward = -np.inf
+        best_return = -np.inf
         
         for episode in range(self.num_episodes):
             done = False
@@ -480,15 +465,15 @@ class CommutativeDQN(BasicDQN):
             losses = self._learn(losses)
             
             if episode % self.eval_freq == 0:
-                eval_rewards, best_eval_reward, best_eval_language, best_eval_regions = self._eval_policy(problem_instance)
-                rewards.append(eval_rewards)
-                avg_rewards = np.mean(rewards[-self.eval_window:])
-                wandb.log({"Average Reward": avg_rewards}, step=episode) 
+                eval_return, eval_language, eval_regions = self._eval_policy(problem_instance)
+                returns.append(eval_return)
+                avg_returns = np.mean(returns[-self.eval_window:])
+                wandb.log({'Average Return': avg_returns}, step=episode)
                 
-                if best_eval_reward > best_reward:
-                    best_reward = best_eval_reward
-                    best_language = best_eval_language
-                    best_regions = best_eval_regions
+                if eval_return > best_return:
+                    best_return = eval_return
+                    best_language = eval_language
+                    best_regions = eval_regions
                     
             traditional_losses.append(losses['traditional_loss'])
             commutative_losses.append(losses['commutative_loss'])
@@ -508,7 +493,7 @@ class CommutativeDQN(BasicDQN):
                 }, step=episode)
         
         best_language = np.array(best_language).reshape(-1,3)
-        return best_reward, best_language, best_regions
+        return best_return, best_language, best_regions
                         
     def _generate_language(self, problem_instance):
         self.ptr_lst = {}
